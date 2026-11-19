@@ -1,0 +1,16 @@
+# Düğümler: yalnızca kendi ölçümlerini yazar, komut konusunu okur.
+user sulama
+topic write sulama/+/telemetry
+topic write sulama/+/status
+topic write sulama/+/ack
+topic read sulama/+/cmd
+
+# Telegraf: yalnızca okur.
+user telegraf
+topic read sulama/+/telemetry
+topic read sulama/+/status
+
+# Operatör (sen, pompa komutu göndermek için): her şeyi görür, komut yazar.
+user operator
+topic read sulama/#
+topic write sulama/+/cmd

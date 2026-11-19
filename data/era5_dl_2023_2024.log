@@ -1,0 +1,123 @@
+ERA5-Land İndirme Başlatılıyor: Park=yildiz, Yıllar=[2023, 2024], Aylar=[4, 5, 6, 7, 8, 9, 10]
+2026-10-21 12:39:26,803 INFO [2026-10-06T00:00:00Z] The [CDS Terms of Use](https://cds.climate.copernicus.eu/disclaimer-privacy) will be updated on 28 October 2026. Continued use of Copernicus Products and Services through the CDS after this date constitutes acceptance of the updated terms. If you do not accept the change, please [contact ECMWF Support](https://jira.ecmwf.int/plugins/servlet/desk/portal/1/create/202) before 27 October 2026.
+ **[More information about the upcoming change.](https://forum.ecmwf.int/t/upcoming-cds-terms-of-use-change/15374)**
+2026-10-21 12:39:27,693 INFO Request ID is cd230b77-0021-48d7-8c78-bdeecb96e41f
+2026-10-21 12:39:28,054 INFO status has been updated to accepted
+2026-10-21 12:47:52,822 INFO status has been updated to running
+2026-10-21 12:55:56,482 INFO status has been updated to successful
+148fc70b54c6558c0989bbf3f1280533.nc:   0%|          | 0.00/152k [00:00<?, ?B/s]148fc70b54c6558c0989bbf3f1280533.nc: 100%|██████████| 152k/152k [00:00<00:00, 245kB/s]                                                                                      2026-10-21 12:55:58,911 INFO [2026-10-06T00:00:00Z] The [CDS Terms of Use](https://cds.climate.copernicus.eu/disclaimer-privacy) will be updated on 28 October 2026. Continued use of Copernicus Products and Services through the CDS after this date constitutes acceptance of the updated terms. If you do not accept the change, please [contact ECMWF Support](https://jira.ecmwf.int/plugins/servlet/desk/portal/1/create/202) before 27 October 2026.
+ **[More information about the upcoming change.](https://forum.ecmwf.int/t/upcoming-cds-terms-of-use-change/15374)**
+2026-10-21 12:55:59,274 INFO Request ID is 6786dcff-8eb5-4f96-a9ae-3c58a19dd5f9
+2026-10-21 12:55:59,433 INFO status has been updated to accepted
+2026-10-21 13:06:23,036 INFO status has been updated to running
+2026-10-21 13:10:30,071 INFO status has been updated to successful
+7f92ea6f23502ac1b42f3faa6d65ce1e.nc:   0%|          | 0.00/157k [00:00<?, ?B/s]7f92ea6f23502ac1b42f3faa6d65ce1e.nc: 100%|██████████| 157k/157k [00:00<00:00, 218kB/s]                                                                                      2026-10-21 13:10:32,038 INFO Request ID is e854a0f8-59da-4fd5-9307-c895bc398891
+2026-10-21 13:10:32,149 INFO status has been updated to accepted
+2026-10-21 13:18:54,953 INFO status has been updated to running
+2026-10-21 13:26:59,176 INFO status has been updated to successful
+fda6e6a139009dd1004b716bafae2c28.nc:   0%|          | 0.00/149k [00:00<?, ?B/s]fda6e6a139009dd1004b716bafae2c28.nc: 100%|██████████| 149k/149k [00:00<00:00, 154kB/s]                                                                                      2026-10-21 13:27:02,863 INFO [2026-10-06T00:00:00Z] The [CDS Terms of Use](https://cds.climate.copernicus.eu/disclaimer-privacy) will be updated on 28 October 2026. Continued use of Copernicus Products and Services through the CDS after this date constitutes acceptance of the updated terms. If you do not accept the change, please [contact ECMWF Support](https://jira.ecmwf.int/plugins/servlet/desk/portal/1/create/202) before 27 October 2026.
+ **[More information about the upcoming change.](https://forum.ecmwf.int/t/upcoming-cds-terms-of-use-change/15374)**
+2026-10-21 13:27:03,612 INFO Request ID is 0dc60730-4183-4982-ad78-eee065051d28
+2026-10-21 13:27:03,905 INFO status has been updated to accepted
+2026-10-21 13:37:34,075 INFO status has been updated to running
+2026-10-21 13:45:40,093 INFO status has been updated to successful
+1d5ee2b03bd11464fcb7384d0c997bb8.nc:   0%|          | 0.00/159k [00:00<?, ?B/s]1d5ee2b03bd11464fcb7384d0c997bb8.nc: 100%|██████████| 159k/159k [00:01<00:00, 106kB/s]                                                                                      Recovering from HTTP error [502 Bad Gateway], attempt 1 of 500
+Retrying in 120 seconds
+2026-10-21 13:47:44,763 INFO Request ID is 6d784ab1-e527-41f5-adaa-ec3317c06e26
+2026-10-21 13:47:44,898 INFO status has been updated to accepted
+2026-10-21 13:49:40,460 INFO status has been updated to running
+Recovering from connection error [('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))], attempt 1 of 500
+Retrying in 120 seconds
+2026-10-21 14:01:00,824 INFO status has been updated to successful
+8767fce44e96079a963ae64952a40f34.nc:   0%|          | 0.00/145k [00:00<?, ?B/s]8767fce44e96079a963ae64952a40f34.nc: 100%|██████████| 145k/145k [00:01<00:00, 122kB/s]                                                                                      2026-10-21 14:01:03,826 INFO [2026-10-06T00:00:00Z] The [CDS Terms of Use](https://cds.climate.copernicus.eu/disclaimer-privacy) will be updated on 28 October 2026. Continued use of Copernicus Products and Services through the CDS after this date constitutes acceptance of the updated terms. If you do not accept the change, please [contact ECMWF Support](https://jira.ecmwf.int/plugins/servlet/desk/portal/1/create/202) before 27 October 2026.
+ **[More information about the upcoming change.](https://forum.ecmwf.int/t/upcoming-cds-terms-of-use-change/15374)**
+2026-10-21 14:01:05,909 INFO Request ID is 733f88d0-754c-4b1f-b541-e16c7f6bc817
+2026-10-21 14:01:07,425 INFO status has been updated to accepted
+2026-10-21 14:07:33,283 INFO status has been updated to running
+2026-10-21 14:13:35,038 INFO status has been updated to successful
+118b774b251fa8a7c52c5a08e112dabc.nc:   0%|          | 0.00/158k [00:00<?, ?B/s]118b774b251fa8a7c52c5a08e112dabc.nc: 100%|██████████| 158k/158k [00:01<00:00, 131kB/s]                                                                                      2026-10-21 14:13:37,667 INFO Request ID is 933eb9b8-7300-4f55-84e0-cac57e1d1586
+2026-10-21 14:13:37,807 INFO status has been updated to accepted
+2026-10-21 14:14:00,148 INFO status has been updated to running
+2026-10-21 14:22:00,904 INFO status has been updated to successful
+7c05c658e9b0c8f16e388451715bcc64.nc:   0%|          | 0.00/144k [00:00<?, ?B/s]7c05c658e9b0c8f16e388451715bcc64.nc: 100%|██████████| 144k/144k [00:00<00:00, 259kB/s]                                                                                      2026-10-21 14:22:02,346 INFO [2026-10-06T00:00:00Z] The [CDS Terms of Use](https://cds.climate.copernicus.eu/disclaimer-privacy) will be updated on 28 October 2026. Continued use of Copernicus Products and Services through the CDS after this date constitutes acceptance of the updated terms. If you do not accept the change, please [contact ECMWF Support](https://jira.ecmwf.int/plugins/servlet/desk/portal/1/create/202) before 27 October 2026.
+ **[More information about the upcoming change.](https://forum.ecmwf.int/t/upcoming-cds-terms-of-use-change/15374)**
+2026-10-21 14:22:02,841 INFO Request ID is b4652a76-909c-4bbe-83e2-0a057376f872
+2026-10-21 14:22:02,946 INFO status has been updated to accepted
+2026-10-21 15:42:12,823 INFO status has been updated to successful
+45be0f339d8ef256d1d8b4ade935358.nc:   0%|          | 0.00/156k [00:00<?, ?B/s]45be0f339d8ef256d1d8b4ade935358.nc: 100%|██████████| 156k/156k [00:00<00:00, 320kB/s]                                                                                     2026-10-21 15:42:14,403 INFO Request ID is 739b9603-bc11-4f4b-bbd7-04e4fc72747d
+2026-10-21 15:42:14,528 INFO status has been updated to accepted
+Recovering from connection error [('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))], attempt 1 of 500
+Retrying in 120 seconds
+2026-10-21 20:52:49,158 INFO status has been updated to successful
+590c8205084072eebc064d11c0e0ba08.nc:   0%|          | 0.00/142k [00:00<?, ?B/s]590c8205084072eebc064d11c0e0ba08.nc: 100%|██████████| 142k/142k [00:00<00:00, 360kB/s]                                                                                      2026-10-21 20:56:19,039 INFO [2026-10-06T00:00:00Z] The [CDS Terms of Use](https://cds.climate.copernicus.eu/disclaimer-privacy) will be updated on 28 October 2026. Continued use of Copernicus Products and Services through the CDS after this date constitutes acceptance of the updated terms. If you do not accept the change, please [contact ECMWF Support](https://jira.ecmwf.int/plugins/servlet/desk/portal/1/create/202) before 27 October 2026.
+ **[More information about the upcoming change.](https://forum.ecmwf.int/t/upcoming-cds-terms-of-use-change/15374)**
+2026-10-21 20:56:25,832 INFO Request ID is 4d2781d2-3def-4708-a5fe-2c573e342798
+2026-10-21 20:56:26,287 INFO status has been updated to accepted
+Recovering from connection error [('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))], attempt 1 of 500
+Retrying in 120 seconds
+2026-10-21 21:41:28,576 INFO status has been updated to successful
+31098530b31f812490011170eaa82930.nc:   0%|          | 0.00/159k [00:00<?, ?B/s]31098530b31f812490011170eaa82930.nc: 100%|██████████| 159k/159k [00:00<00:00, 296kB/s]                                                                                      2026-10-21 21:41:30,256 INFO Request ID is ecd8364c-4fe7-41e5-a4bd-990aa9aa0cf5
+2026-10-21 21:41:30,461 INFO status has been updated to accepted
+2026-10-21 21:41:44,291 INFO status has been updated to running
+2026-10-21 21:49:52,309 INFO status has been updated to successful
+64c620b107dc4f838e5cc63c042643c1.nc:   0%|          | 0.00/146k [00:00<?, ?B/s]64c620b107dc4f838e5cc63c042643c1.nc: 100%|██████████| 146k/146k [00:00<00:00, 300kB/s]                                                                                      2026-10-21 21:49:53,848 INFO [2026-10-06T00:00:00Z] The [CDS Terms of Use](https://cds.climate.copernicus.eu/disclaimer-privacy) will be updated on 28 October 2026. Continued use of Copernicus Products and Services through the CDS after this date constitutes acceptance of the updated terms. If you do not accept the change, please [contact ECMWF Support](https://jira.ecmwf.int/plugins/servlet/desk/portal/1/create/202) before 27 October 2026.
+ **[More information about the upcoming change.](https://forum.ecmwf.int/t/upcoming-cds-terms-of-use-change/15374)**
+2026-10-21 21:49:54,093 INFO Request ID is 8ee76f49-4b70-4889-8544-c78a12d26a8e
+2026-10-21 21:49:54,201 INFO status has been updated to accepted
+2026-10-21 21:50:16,123 INFO status has been updated to running
+2026-10-21 21:58:15,710 INFO status has been updated to successful
+6ab2394df8fe56841127cb5379069218.nc:   0%|          | 0.00/157k [00:00<?, ?B/s]6ab2394df8fe56841127cb5379069218.nc: 100%|██████████| 157k/157k [00:00<00:00, 320kB/s]                                                                                      2026-10-21 21:58:17,366 INFO Request ID is a7e977ef-c3e2-4eb9-935c-f41fb138e7ba
+2026-10-21 21:58:17,458 INFO status has been updated to accepted
+2026-10-21 21:58:38,827 INFO status has been updated to running
+2026-10-21 22:06:38,126 INFO status has been updated to successful
+6f7557a51693ac419e585c2fc90a8a78.nc:   0%|          | 0.00/147k [00:00<?, ?B/s]6f7557a51693ac419e585c2fc90a8a78.nc: 100%|██████████| 147k/147k [00:00<00:00, 323kB/s]                                                                                      2026-10-21 22:06:39,587 INFO [2026-10-06T00:00:00Z] The [CDS Terms of Use](https://cds.climate.copernicus.eu/disclaimer-privacy) will be updated on 28 October 2026. Continued use of Copernicus Products and Services through the CDS after this date constitutes acceptance of the updated terms. If you do not accept the change, please [contact ECMWF Support](https://jira.ecmwf.int/plugins/servlet/desk/portal/1/create/202) before 27 October 2026.
+ **[More information about the upcoming change.](https://forum.ecmwf.int/t/upcoming-cds-terms-of-use-change/15374)**
+2026-10-21 22:06:41,966 INFO Request ID is 34406cd7-fff7-417f-8bc9-a48bb94db8ff
+2026-10-21 22:06:42,286 INFO status has been updated to accepted
+2026-10-21 22:07:03,664 INFO status has been updated to running
+2026-10-21 22:13:02,778 INFO status has been updated to successful
+d470b864b91c633412c21162cba80f4b.nc:   0%|          | 0.00/159k [00:00<?, ?B/s]d470b864b91c633412c21162cba80f4b.nc: 100%|██████████| 159k/159k [00:00<00:00, 352kB/s]                                                                                      2026-10-21 22:13:04,279 INFO Request ID is 85950146-c7a0-4201-b001-abccfa254f37
+2026-10-21 22:13:04,384 INFO status has been updated to accepted
+2026-10-21 22:13:25,914 INFO status has been updated to running
+2026-10-21 22:21:25,488 INFO status has been updated to successful
+b68d8612408d46fc334f420256344b2c.nc:   0%|          | 0.00/149k [00:00<?, ?B/s]b68d8612408d46fc334f420256344b2c.nc: 100%|██████████| 149k/149k [00:00<00:00, 292kB/s]                                                                                      2026-10-21 22:21:26,963 INFO [2026-10-06T00:00:00Z] The [CDS Terms of Use](https://cds.climate.copernicus.eu/disclaimer-privacy) will be updated on 28 October 2026. Continued use of Copernicus Products and Services through the CDS after this date constitutes acceptance of the updated terms. If you do not accept the change, please [contact ECMWF Support](https://jira.ecmwf.int/plugins/servlet/desk/portal/1/create/202) before 27 October 2026.
+ **[More information about the upcoming change.](https://forum.ecmwf.int/t/upcoming-cds-terms-of-use-change/15374)**
+2026-10-21 22:21:27,456 INFO Request ID is f77dab61-8f4b-419f-8f7d-6cc88768e138
+2026-10-21 22:21:27,535 INFO status has been updated to accepted
+2026-10-21 22:22:00,421 INFO status has been updated to running
+2026-10-21 22:27:48,134 INFO status has been updated to successful
+c8f2397c8055ada228ffd8425fca6375.nc:   0%|          | 0.00/157k [00:00<?, ?B/s]c8f2397c8055ada228ffd8425fca6375.nc: 100%|██████████| 157k/157k [00:00<00:00, 378kB/s]                                                                                      2026-10-21 22:27:51,148 INFO Request ID is a9d8e152-6558-45eb-99ba-91c710b33115
+2026-10-21 22:27:51,249 INFO status has been updated to accepted
+2026-10-21 22:28:04,995 INFO status has been updated to running
+2026-10-21 22:40:13,624 INFO status has been updated to successful
+4ae89a1e8e2a041f83075d9db80ae82e.nc:   0%|          | 0.00/143k [00:00<?, ?B/s]4ae89a1e8e2a041f83075d9db80ae82e.nc: 100%|██████████| 143k/143k [00:00<00:00, 299kB/s]                                                                                      2026-10-21 22:40:15,099 INFO [2026-10-06T00:00:00Z] The [CDS Terms of Use](https://cds.climate.copernicus.eu/disclaimer-privacy) will be updated on 28 October 2026. Continued use of Copernicus Products and Services through the CDS after this date constitutes acceptance of the updated terms. If you do not accept the change, please [contact ECMWF Support](https://jira.ecmwf.int/plugins/servlet/desk/portal/1/create/202) before 27 October 2026.
+ **[More information about the upcoming change.](https://forum.ecmwf.int/t/upcoming-cds-terms-of-use-change/15374)**
+2026-10-21 22:40:15,801 INFO Request ID is f04cc276-a2c8-4042-aa60-e56ded226925
+2026-10-21 22:40:15,886 INFO status has been updated to accepted
+2026-10-21 22:40:29,804 INFO status has been updated to running
+2026-10-21 22:46:36,199 INFO status has been updated to successful
+42a25d3c6adaf1aecccec29c4a19bac3.nc:   0%|          | 0.00/158k [00:00<?, ?B/s]42a25d3c6adaf1aecccec29c4a19bac3.nc: 100%|██████████| 158k/158k [00:00<00:00, 363kB/s]                                                                                      2026-10-21 22:46:37,614 INFO Request ID is 85c1534c-be08-4177-a53b-008b7c3bfc8e
+2026-10-21 22:46:37,708 INFO status has been updated to accepted
+2026-10-21 22:47:10,608 INFO status has been updated to running
+2026-10-21 22:54:58,662 INFO status has been updated to successful
+38747d54a10886a36ce8366cb449c929.nc:   0%|          | 0.00/143k [00:00<?, ?B/s]38747d54a10886a36ce8366cb449c929.nc: 100%|██████████| 143k/143k [00:00<00:00, 271kB/s]                                                                                      2026-10-21 22:55:00,176 INFO [2026-10-06T00:00:00Z] The [CDS Terms of Use](https://cds.climate.copernicus.eu/disclaimer-privacy) will be updated on 28 October 2026. Continued use of Copernicus Products and Services through the CDS after this date constitutes acceptance of the updated terms. If you do not accept the change, please [contact ECMWF Support](https://jira.ecmwf.int/plugins/servlet/desk/portal/1/create/202) before 27 October 2026.
+ **[More information about the upcoming change.](https://forum.ecmwf.int/t/upcoming-cds-terms-of-use-change/15374)**
+2026-10-21 22:55:00,404 INFO Request ID is 0969d250-4911-4769-97a5-1f7e3706ca68
+2026-10-21 22:55:00,502 INFO status has been updated to accepted
+2026-10-21 22:55:21,838 INFO status has been updated to running
+2026-10-21 23:01:21,853 INFO status has been updated to successful
+d0b037716f423ba1a59cfff3eac47c78.nc:   0%|          | 0.00/157k [00:00<?, ?B/s]d0b037716f423ba1a59cfff3eac47c78.nc: 100%|██████████| 157k/157k [00:00<00:00, 310kB/s]                                                                                      2026-10-21 23:01:24,598 INFO Request ID is d9ce45ed-b5d3-4834-ad4a-4db5f424072a
+2026-10-21 23:01:24,714 INFO status has been updated to accepted
+2026-10-21 23:02:40,502 INFO status has been updated to running
+2026-10-21 23:11:45,979 INFO status has been updated to successful
+2598b2d591ddd06235036587171b9711.nc:   0%|          | 0.00/148k [00:00<?, ?B/s]2598b2d591ddd06235036587171b9711.nc: 100%|██████████| 148k/148k [00:00<00:00, 354kB/s]                                                                                      2026-10-21 23:11:48,577 INFO [2026-10-06T00:00:00Z] The [CDS Terms of Use](https://cds.climate.copernicus.eu/disclaimer-privacy) will be updated on 28 October 2026. Continued use of Copernicus Products and Services through the CDS after this date constitutes acceptance of the updated terms. If you do not accept the change, please [contact ECMWF Support](https://jira.ecmwf.int/plugins/servlet/desk/portal/1/create/202) before 27 October 2026.
+ **[More information about the upcoming change.](https://forum.ecmwf.int/t/upcoming-cds-terms-of-use-change/15374)**
+2026-10-21 23:11:48,903 INFO Request ID is f2b5a68b-bf82-4065-b3a9-703eebdebc3a
+2026-10-21 23:11:48,998 INFO status has been updated to accepted
+2026-10-21 23:12:10,698 INFO status has been updated to running
+2026-10-21 23:18:09,990 INFO status has been updated to successful
+bd1d8629cc42a55befd1d49091e41ab4.nc:   0%|          | 0.00/159k [00:00<?, ?B/s]bd1d8629cc42a55befd1d49091e41ab4.nc: 100%|██████████| 159k/159k [00:00<00:00, 367kB/s]                                                                                      2026-10-21 23:18:11,271 INFO Request ID is 7cd37a2c-fe32-41f2-9372-2b44804480ae
+2026-10-21 23:18:11,360 INFO status has been updated to accepted
+2026-10-21 23:18:34,049 INFO status has been updated to running
+2026-10-21 23:28:34,188 INFO status has been updated to successful
+7fecd52d2e5fafe9200995ac20c473d4.nc:   0%|          | 0.00/147k [00:00<?, ?B/s]7fecd52d2e5fafe9200995ac20c473d4.nc: 100%|██████████| 147k/147k [00:00<00:00, 347kB/s]                                                                                      ✅ İndirme tamamlandı: 14 dosya kontrol edildi/indirildi (data/raw/era5).

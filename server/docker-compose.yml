@@ -1,0 +1,94 @@
+# Ev sunucusu yığını: MQTT (Mosquitto) -> Telegraf -> InfluxDB -> Grafana + Twin API & UI
+# Çalıştırmadan önce: ./scripts/init.sh   (.env ve MQTT parolalarını üretir)
+# Sonra:              docker compose up -d
+
+name: sulama
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      # Yalnızca yerel ağ arayüzüne bağlanır.
+      - "${LAN_BIND_IP:-127.0.0.1}:1883:1883"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:ro
+      - mosquitto-data:/mosquitto/data
+
+  influxdb:
+    image: influxdb:2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8086:8086"
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX_USER:-sulama}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_PASSWORD:?INFLUX_PASSWORD ortam degiskeni zorunludur}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUX_ORG:-gsu}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUX_BUCKET:-sulama}
+      DOCKER_INFLUXDB_INIT_RETENTION: ${INFLUX_RETENTION:-1y}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN:?INFLUX_TOKEN ortam degiskeni zorunludur}
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+      - influxdb-config:/etc/influxdb2
+
+  telegraf:
+    image: telegraf:1.34
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+      - influxdb
+    env_file: .env
+    volumes:
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    restart: unless-stopped
+    depends_on:
+      - influxdb
+    ports:
+      - "${LAN_BIND_IP:-127.0.0.1}:3000:3000"
+    environment:
+      TZ: ${TZ:-Europe/Istanbul}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD ortam degiskeni zorunludur}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      INFLUX_ORG: ${INFLUX_ORG:-gsu}
+      INFLUX_BUCKET: ${INFLUX_BUCKET:-sulama}
+      INFLUX_TOKEN: ${INFLUX_TOKEN:?INFLUX_TOKEN ortam degiskeni zorunludur}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+  api:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile.api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      API_AUTH_TOKEN: ${API_AUTH_TOKEN:?API_AUTH_TOKEN ortam degiskeni zorunludur}
+    volumes:
+      - ../data:/app/data:ro
+
+  ui:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile.ui
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${LAN_BIND_IP:-127.0.0.1}:8501:8501"
+    volumes:
+      - ../data:/app/data:ro
+
+volumes:
+  mosquitto-data:
+  influxdb-data:
+  influxdb-config:
+  grafana-data:

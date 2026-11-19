@@ -1,0 +1,22 @@
+ERA5-Land İndirme Başlatılıyor: Park=yildiz, Yıllar=[2021, 2022], Aylar=[4, 5, 6, 7, 8, 9, 10]
+2026-10-21 12:39:12,783 INFO [2026-10-06T00:00:00Z] The [CDS Terms of Use](https://cds.climate.copernicus.eu/disclaimer-privacy) will be updated on 28 October 2026. Continued use of Copernicus Products and Services through the CDS after this date constitutes acceptance of the updated terms. If you do not accept the change, please [contact ECMWF Support](https://jira.ecmwf.int/plugins/servlet/desk/portal/1/create/202) before 27 October 2026.
+ **[More information about the upcoming change.](https://forum.ecmwf.int/t/upcoming-cds-terms-of-use-change/15374)**
+2026-10-21 12:39:15,301 INFO Request ID is 0fc2d42e-2a63-4b24-a725-743a8020cf51
+2026-10-21 12:39:17,504 INFO status has been updated to accepted
+2026-10-21 12:41:16,152 INFO status has been updated to running
+2026-10-21 12:47:44,356 INFO status has been updated to successful
+49d2cab68060bec0aa5d06285bd66c2d.nc:   0%|          | 0.00/157k [00:00<?, ?B/s]49d2cab68060bec0aa5d06285bd66c2d.nc: 100%|██████████| 157k/157k [00:00<00:00, 324kB/s]                                                                                      2026-10-21 12:47:47,519 INFO Request ID is 838964c1-a85f-40c4-b795-f2dcfa4432e1
+2026-10-21 12:47:47,632 INFO status has been updated to accepted
+2026-10-21 12:56:09,395 INFO status has been updated to running
+2026-10-21 13:04:14,569 INFO status has been updated to successful
+c950113af663d1537daea45bfb34a0ad.nc:   0%|          | 0.00/146k [00:00<?, ?B/s]c950113af663d1537daea45bfb34a0ad.nc: 100%|██████████| 146k/146k [00:01<00:00, 95.3kB/s]                                                                                       2026-10-21 13:04:18,798 INFO [2026-10-06T00:00:00Z] The [CDS Terms of Use](https://cds.climate.copernicus.eu/disclaimer-privacy) will be updated on 28 October 2026. Continued use of Copernicus Products and Services through the CDS after this date constitutes acceptance of the updated terms. If you do not accept the change, please [contact ECMWF Support](https://jira.ecmwf.int/plugins/servlet/desk/portal/1/create/202) before 27 October 2026.
+ **[More information about the upcoming change.](https://forum.ecmwf.int/t/upcoming-cds-terms-of-use-change/15374)**
+2026-10-21 13:04:19,403 INFO Request ID is e1973e68-c715-4e0c-9a92-f4657b45df36
+2026-10-21 13:04:19,615 INFO status has been updated to accepted
+2026-10-21 13:12:46,278 INFO status has been updated to running
+2026-10-21 13:18:47,579 INFO status has been updated to successful
+53924a6e553c8f43c05752941cd0f400.nc:   0%|          | 0.00/159k [00:00<?, ?B/s]53924a6e553c8f43c05752941cd0f400.nc: 100%|██████████| 159k/159k [00:00<00:00, 211kB/s]                                                                                      2026-10-21 13:18:50,482 INFO Request ID is 7d0f29e9-b1b6-4699-839e-e36e164c760c
+2026-10-21 13:18:51,459 INFO status has been updated to accepted
+2026-10-21 13:27:18,542 INFO status has been updated to running
+2026-10-21 13:35:21,915 INFO status has been updated to successful
+305ff27fae8fd45d0b290014c0235f00.nc:   0%|          | 0.00/146k [00:00<?, ?B/s]305ff27fae8fd45d0b290014c0235f00.nc: 100%|██████████| 146k/146k [00:02<00:00, 59.1kB/s]                                                                                       ✅ İndirme tamamlandı: 14 dosya kontrol edildi/indirildi (data/raw/era5).

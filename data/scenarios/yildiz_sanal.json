@@ -1,0 +1,43 @@
+{
+  "name": "Yıldız Parkı - sanal test alanı (v0)",
+  "park_id": "yildiz",
+  "status": "assumption",
+  "notes": "Zon sınırları, alanlar ve sensör yerleşimi ŞEMATİK SENARYO VARSAYIMIDIR; gerçek park planı değildir. İBB Park ve Bahçeler'den zon/debi/uygulama hızı verisi gelince bu dosya güncellenecek. Toprak parametreleri src/twin/config.py'den gelir.",
+  "canvas": [100, 60],
+  "zones": [
+    {
+      "zone_id": "Z1",
+      "name": "Açık çim alanı",
+      "vegetation": "turf_cool_season",
+      "area_m2": 6000,
+      "area_source": "senaryo varsayımı",
+      "layout": [5, 30, 45, 25],
+      "sensors": [
+        {"sensor_id": "TN-Z1-1", "pos": [15, 42], "noise_std": 0.02, "fault": {"type": "none"}},
+        {"sensor_id": "TN-Z1-2", "pos": [38, 42], "noise_std": 0.02, "fault": {"type": "drift", "rate_per_day": 0.001}}
+      ]
+    },
+    {
+      "zone_id": "Z2",
+      "name": "Giriş çim şeridi",
+      "vegetation": "turf_cool_season",
+      "area_m2": 2500,
+      "area_source": "senaryo varsayımı",
+      "layout": [5, 5, 45, 20],
+      "sensors": [
+        {"sensor_id": "TN-Z2-1", "pos": [27, 15], "noise_std": 0.02, "fault": {"type": "freeze", "start_day": 60, "duration_days": 20}}
+      ]
+    },
+    {
+      "zone_id": "Z3",
+      "name": "Ağaçlık alan (koru)",
+      "vegetation": "tree",
+      "area_m2": 12000,
+      "area_source": "senaryo varsayımı",
+      "layout": [55, 5, 40, 50],
+      "sensors": [
+        {"sensor_id": "TN-Z3-1", "pos": [75, 30], "noise_std": 0.02, "fault": {"type": "dropout", "prob": 0.2}}
+      ]
+    }
+  ]
+}

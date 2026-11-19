@@ -1,0 +1,165 @@
+# Akıllı sulama dijital ikizi: altyapı iskeleti
+
+Galatasaray Üniversitesi Akıllı Sistemler Mühendisliği yüksek lisans tezi için, kent parklarında IoT
+tabanlı sulama karar desteği ve dijital ikiz çalışmasının donanım, firmware ve veri altyapısı.
+Veri toplama ve işleme **evdeki sunucuda** (eski ASUS dizüstü) yapılır; ThingSpeak ikincil kopyadır.
+
+## Sanal Park Test Alanı (Streamlit)
+
+Fiziksel kurulumdan önce dijital test: `data/scenarios/*.json` içindeki zonlar ve sanal sensörlerle,
+ERA5-Land havası üzerinde gün gün simülasyon. Ekran yalnızca sulama **önerisi** üretir; hiçbir
+vana/pompa/MQTT komutu göndermez.
+
+```bash
+.venv/bin/streamlit run src/twin/ui/sanal_park.py
+```
+
+Streamlit Community Cloud: depo `main` dalı, ana dosya `src/twin/ui/sanal_park.py`, Python 3.11.
+Bağımlılıklar `requirements.txt` içindedir.
+
+**Veri atfı:** `data/processed/era5_*.csv` dosyaları Copernicus ERA5-Land (Muñoz-Sabater vd., 2021)
+saatlik verisinden türetilmiş günlük özetlerdir. Contains modified Copernicus Climate Change Service
+information (2020-2024). Ham NetCDF dosyaları ve İSKİ verisi depoya girmez.
+
+## Mimari
+
+```
+ NodeMCU düğümü (toprak nemi, DHT11, pompa rölesi)
+        |
+        |-- MQTT (ev ağı) ---------> Ev sunucusu  [birincil]
+        |                              Mosquitto -> Telegraf -> InfluxDB -> Grafana
+        |                              + Python analiz (ERA5-Land, SARIMA, QC, model)
+        |                              + İSKİ verisi (şifreli diskte, bu makineden çıkmaz)
+        |
+        '-- HTTPS ------------------> ThingSpeak  [ikincil kopya, yalnız kendi sensör verin]
+
+ Birincil teslim başarısız olursa düğüm verileri kendi flaş belleğine (LittleFS) yazar.
+ Sunucu kapalıyken ThingSpeak'e yazılan veri sonradan tools/thingspeak_fetch.py ile alınır.
+```
+
+Kural: ThingSpeak'e yalnızca düğümün kendi ölçümleri gider. İSKİ verisi ve ondan türetilmiş her şey
+sunucuda kalır.
+
+## Klasörler
+
+| Yol | İçerik |
+| --- | --- |
+| `hardware/wiring.md` | Kit parçaları, pin tablosu, pompa güvenliği, kalibrasyon |
+| `firmware/sulama_node/` | NodeMCU yazılımı (`config.example.h` -> `config.h`) |
+| `server/` | Docker Compose yığını (Mosquitto, Telegraf, InfluxDB, Grafana), `scripts/init.sh` |
+| `docs/install_ubuntu.md` | Ubuntu Server otomatik kurulumu: ssh anahtarı, Wi-Fi, şifreli disk, genel amaçlı sunucu kuralları |
+| `server/autoinstall/` | `user-data`, `meta-data` (autoinstall; alanlar `<...>` ile doldurulur) |
+| `BOB_PROMPT.md` | Geliştirme asistanına (Bob) verilecek ana prompt |
+| `docs/THESIS_FRAME.md` | Tezin bilimsel çerçevesi: RQ'lar, yöntem, kaynaklar ve doğrulama durumu, takvim |
+| `docs/DATA_INVENTORY.md` | Veri kaynakları, durumları ve kurum verisi için giriş şemaları |
+| `docs/INTERFACES.md` | MQTT, REST API, arayüz ve CLI belirtimi |
+| `data/public/` | Halka açık veriler: Yıldız ve Maçka poligonları, İBB yıllık yeşil alan suyu |
+| `docs/server_setup.md` | Dizüstünü sunucuya çevirme: şifreleme, güvenlik, ayarlar, yedek, İSKİ verisi kuralları |
+| `tools/` | `serial_logger.py`, `thingspeak_fetch.py`, `era5_download.py`, `qc_report.py` |
+| `tests/` | Araçların birim testleri (`python -m unittest discover -s tests -v`) |
+| `data/` | `raw/`, `processed/` (git'e girmez) |
+| `notebooks/` | Analizler (SARIMA, model, dijital ikiz) |
+
+## Veri şeması
+
+Düğüm her `READ_INTERVAL_S` saniyede bir ölçüm yapar ve MQTT'ye (`sulama/<NODE_ID>/telemetry`) JSON
+yayınlar. Aynı değerler ThingSpeak alanlarına şu eşlemeyle gider:
+
+| JSON alanı | ThingSpeak | Anlamı |
+| --- | --- | --- |
+| `soil_raw` | field1 | Toprak nemi ham ADC (0-1023), 16 örnek ortalaması |
+| `soil_pct` | field2 | Kalibrasyonla hesaplanan yüzde (kuru 0, ıslak 100) |
+| `temp_c` | field3 | Hava sıcaklığı (DHT11, belirtim ±2 °C) |
+| `hum_pct` | field4 | Bağıl nem (DHT11, belirtim ±5 %) |
+| `pump_s` | field5 | Açılıştan beri pompanın toplam çalışma süresi (sn) |
+| `rssi` | field6 | Wi-Fi sinyal gücü |
+| `seq` | field7 | Açılıştan beri ölçüm sıra numarası (kayıp tespiti için) |
+| `err` | field8 | Hata bayrakları: 1 DHT, 2 toprak, 4 Wi-Fi, 8 ThingSpeak, 16 MQTT |
+
+`err` ve `seq` tezde arıza ve belirsizlik analizi için etiket olarak kullanılabilir: ucuz sensörün ne
+zaman bozulduğu ve veri kaybının ne kadar olduğu ölçülebilir hâle gelir.
+
+## Yol haritası
+
+**Faz 0: Sunucu hazırlığı**
+1. Dizüstünün donanımını kontrol et (`docs/server_setup.md` 1. adım), çıktıyı paylaş.
+2. Eski diski yedekle, işletim sistemini şifreli (LUKS) kur, ssh anahtarı, güvenlik duvarı.
+3. Modemde sunucuya sabit IP ver. Docker'ı kur, `server/scripts/init.sh` ve `docker compose up -d`.
+4. Sahte ölçümle (rehberdeki `mosquitto_pub` komutu) Grafana'da veriyi gör.
+
+**Faz 1: Masa başı düğüm (Faz 0 ile paralel)**
+1. ThingSpeak'te 8 alanlı kanal aç, Write ve Read anahtarlarını al.
+2. `config.example.h` -> `config.h`, Arduino IDE'ye kütüphaneleri kur, yükle.
+3. `RAW` komutuyla kuru/ıslak kalibrasyon, DHT11 kontrolü, röleyi pompasız dene, sonra pompayı suda dene.
+4. 24 saat çalıştır, `tools/serial_logger.py` ile kaydet, `tools/qc_report.py` ile kontrol et.
+
+**Faz 2: Yerel hat uçtan uca**
+1. Düğümü sunucunun MQTT'sine bağla (`MQTT_HOST` = sunucu IP).
+2. Kesinti testleri: sunucuyu kapat (düğüm yedeğe yazmalı, ThingSpeak devam etmeli), Wi-Fi'yi kapat,
+   sunucuyu aç (veri akışı geri gelmeli). `DUMP` ile yedeği doğrula.
+3. Grafana panelleri: toprak nemi, sıcaklık, hata bayrakları. Yedek alma ve geri yükleme denemesi.
+
+**Faz 3: Dış veri ve baz model**
+1. Copernicus CDS hesabı aç (`https://cds.climate.copernicus.eu`), kişisel erişim anahtarını `~/.cdsapirc` içine ekle.
+2. `twin era5 download --park yildiz --years 2015-2025 --months 4-10` ve `twin era5 build` komutlarıyla reanaliz veri setini hazırla.
+3. Önceki çalışmandaki SARIMA yağış tahmini hattını sunucuya taşı, yeni veriyle çalıştır.
+
+## ERA5-Land Veri Hattı ve CLI Kullanımı
+
+### 1. Copernicus CDS API Yapılandırması (`~/.cdsapirc`)
+Copernicus Climate Data Store'un yeni API'si (`cds.climate.copernicus.eu/api`) kullanılır.
+Ev dizininde `~/.cdsapirc` dosyası oluşturulmalıdır:
+```ini
+url: https://cds.climate.copernicus.eu/api
+key: <KİŞİSEL_ERİŞİM_ANAHTARINIZ>
+```
+> **GÜVENLİK KURALI:** API anahtarı kesinlikle depoya, kod bloklarına, loglara veya testlere girmez. `~/.cdsapirc` yoksa CLI ve indirme araçları açık bir hata mesajı vererek durur.
+
+### 2. Veri İndirme ve İşleme Komutları
+```bash
+# Yıldız Parkı için 2015-2025 sezonları (Nisan-Ekim) NetCDF indirme
+twin era5 download --park yildiz --years 2015-2025 --months 4-10
+
+# İndirilen ham NetCDF dosyalarını işleme, deaccumulation ve FAO-56 ETo hesaplama
+twin era5 build --raw-dir data/raw/era5 --out-dir data/processed
+
+# Simülasyon veya karşılaştırmada gerçek ERA5 verisini kullanma
+twin simulate --park yildiz --season 2024 --strategy S4 --source era5
+twin compare --park yildiz --season 2024 --source era5
+```
+
+### 3. ERA5-Land Izgara Çözünürlüğü ve Park Eşleşmesi
+- ERA5-Land yatay ızgara çözünürlüğü **0.1° (~9 km)** dir.
+- Yıldız Korusu (41.0484° N, 29.0159° E) ve Maçka Demokrasi Parkı (41.0443° N, 28.9931° E) Beşiktaş ilçesinde birbirine yaklaşık ~2 km mesafede yer aldığından, ERA5-Land ızgarasında **aynı hücreye** denk gelmektedir.
+- Bu durum mikro-iklim farklarını (ağaç tacı, gölgeleme, vadi topoğrafyası) ERA5 düzeyinde ayırt edememekle birlikte, bölgesel makro-iklim ve FAO-56 referans evapotranspirasyon ($ETo$) için güvenilir bir zemin sunar. Park içi yerel mikro-iklim farkları IoT sensörleri ve veri asimilasyonu (EnKF / Nudging) ile düzeltilir.
+
+**Faz 4: İSKİ verisi geldiğinde**
+1. Gizlilik Taahhütnamesi'ndeki saklama, kopyalama ve imha maddelerini oku; sunucu kurulumunu ona göre doğrula.
+2. Veriyi `/srv/iski-data` (şifreli disk, izin 700) altına al, veri sözlüğünü çıkar, `qc_report` mantığıyla kontrol et.
+3. İlk analiz: tüketim ve yağış ilişkisi, bölge düzeyinde dijital ikiz taslağı.
+
+**Faz 5: Saha pilotu**
+1. Parka sensör koymak için ilgili kurumdan (park İBB ya da Beşiktaş Belediyesi sorumluluğundaysa onlardan)
+   izin gerekir; kurulumdan önce yazılı olarak sor. İzin gelene kadar saksı ya da balkon testi yap.
+2. Sahada güç, su geçirmezlik, Wi-Fi/LoRa kapsama sorunlarını çöz (kitteki Wi-Fi düğümü yalnızca
+   Wi-Fi'nin çektiği yerde çalışır).
+
+## Neyi test ettim, neyi etmedim
+
+| Konu | Durum |
+| --- | --- |
+| `tools/` Python araçları | Birim testlerle doğrulandı (10 test geçti, sahte veri ve sahte ağ yanıtıyla) |
+| `qc_report.py` | Sentetik veride uçtan uca çalıştırıldı; ilk sürümde MAD sıfır olunca sıçrama kaçırma ve yanlış alarm hataları bulundu ve düzeltildi |
+| Shell betiği, YAML, TOML sözdizimi | Ayrıştırıldı; `init.sh` içindeki parola üretme döngüsü geçici dosyada denendi |
+| Firmware (`sulama_node.ino`) | **Derlenmedi.** Sandbox'ta PlatformIO platform indirmesi ağ politikasıyla engellendi. Arduino IDE'de ilk derlemede hata çıkabilir |
+| Autoinstall `user-data` | YAML olarak ayrıştırıldı; **gerçek bir dizüstünde denenmedi** (Wi-Fi sürücüsü, disk adı, LUKS ayarı ilk denemede sorun çıkarabilir) |
+| Docker yığını | **Çalıştırılmadı** (sandbox'ta Docker yok). Telegraf'ın JSON `null` alanlarını nasıl işlediği de doğrulanmadı |
+| ThingSpeak, ERA5 | Gerçek hesapla denenmedi; ThingSpeak'in HTTP/HTTPS kabulü ve ERA5 değişken adları ilk denemede kontrol edilmeli |
+| Donanım (röle, pompa, sensör) | Elimde cihaz yok; bağlantı şeması kit parça listesine ve ESP8266 genel özelliklerine dayanıyor, toprak sensörü modeli doğrulanmadı |
+
+## Açık sorular
+
+- Dizüstünün modeli, RAM'i, diski (SSD/HDD) nedir?
+- Yerel agent işi nedir (yazılım, model, bellek ihtiyacı)? Sunucuyu paylaşacaksa kaynak planı ona göre yapılır.
+- Düğüm sayısı: kitteki tek NodeMCU ile mi başlıyoruz, yoksa ikinci bir düğüm (ve ikinci toprak sensörü,
+  yani ADS1115) alınacak mı?

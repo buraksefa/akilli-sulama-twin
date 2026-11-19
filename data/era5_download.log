@@ -1,0 +1,15 @@
+ERA5-Land İndirme Başlatılıyor: Park=yildiz, Yıllar=[2020, 2021, 2022, 2023, 2024], Aylar=[4, 5, 6, 7, 8, 9, 10]
+2026-10-14 14:17:50,942 INFO [2026-10-06T00:00:00Z] The [CDS Terms of Use](https://cds.climate.copernicus.eu/disclaimer-privacy) will be updated on 28 October 2026. Continued use of Copernicus Products and Services through the CDS after this date constitutes acceptance of the updated terms. If you do not accept the change, please [contact ECMWF Support](https://jira.ecmwf.int/plugins/servlet/desk/portal/1/create/202) before 27 October 2026.
+ **[More information about the upcoming change.](https://forum.ecmwf.int/t/upcoming-cds-terms-of-use-change/15374)**
+İndirme hatası (2020-04, Deneme 1/3): 403 Client Error: Forbidden for url: https://cds.climate.copernicus.eu/api/retrieve/v1/processes/reanalysis-era5-land/execution
+cost limits exceeded
+Your request is too large, please reduce your selection.
+İndirme hatası (2020-04, Deneme 2/3): 403 Client Error: Forbidden for url: https://cds.climate.copernicus.eu/api/retrieve/v1/processes/reanalysis-era5-land/execution
+cost limits exceeded
+Your request is too large, please reduce your selection.
+İndirme hatası (2020-04, Deneme 3/3): 403 Client Error: Forbidden for url: https://cds.climate.copernicus.eu/api/retrieve/v1/processes/reanalysis-era5-land/execution
+cost limits exceeded
+Your request is too large, please reduce your selection.
+❌ İndirme sırasında hata oluştu: ERA5-Land indirmesi 3 deneme sonrasında başarısız oldu (2020-04): 403 Client Error: Forbidden for url: https://cds.climate.copernicus.eu/api/retrieve/v1/processes/reanalysis-era5-land/execution
+cost limits exceeded
+Your request is too large, please reduce your selection.

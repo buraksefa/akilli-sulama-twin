@@ -1,0 +1,59 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_id": "yildiz_z01",
+        "park_id": "yildiz",
+        "veg_type": "lawn",
+        "irrigation_type": "sprinkler",
+        "area_m2": 120000.0,
+        "app_rate_mm_h": 12.0,
+        "valve_id": "VALVE_Y01",
+        "controller_id": "CTRL_Y01",
+        "water_source": "network",
+        "irrigated_fraction": 0.60
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [29.012, 41.048],
+            [29.016, 41.048],
+            [29.016, 41.051],
+            [29.012, 41.051],
+            [29.012, 41.048]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_id": "macka_z01",
+        "park_id": "macka",
+        "veg_type": "lawn",
+        "irrigation_type": "sprinkler",
+        "area_m2": 80000.0,
+        "app_rate_mm_h": 10.0,
+        "valve_id": "VALVE_M01",
+        "controller_id": "CTRL_M01",
+        "water_source": "network",
+        "irrigated_fraction": 0.60
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [28.992, 41.043],
+            [28.995, 41.043],
+            [28.995, 41.046],
+            [28.992, 41.046],
+            [28.992, 41.043]
+          ]
+        ]
+      }
+    }
+  ]
+}

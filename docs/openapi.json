@@ -1,0 +1,1109 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Akıllı Sulama Dijital İkiz API",
+    "description": "Galatasaray Üniversitesi Yüksek Lisans Tezi Kentsel Yeşil Alan Sulama Karar Desteği REST API Servisi",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Get Health",
+        "description": "Servis sağlık ve sürüm kontrolü.",
+        "operationId": "get_health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/parks": {
+      "get": {
+        "summary": "Get Parks",
+        "description": "Kayıtlı park listesi ve poligon metadata bilgileri.",
+        "operationId": "get_parks_parks_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ParkResponse"
+                  },
+                  "type": "array",
+                  "title": "Response Get Parks Parks Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/parks/{park_id}/zones": {
+      "get": {
+        "summary": "Get Park Zones",
+        "description": "Belirli bir park için sulama bölgeleri (zones).",
+        "operationId": "get_park_zones_parks__park_id__zones_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "park_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Park Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ZoneResponse"
+                  },
+                  "title": "Response Get Park Zones Parks  Park Id  Zones Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/weather": {
+      "get": {
+        "summary": "Get Weather",
+        "description": "Park için sezonluk ERA5 meteoroloji ve ETo zaman serisi.",
+        "operationId": "get_weather_weather_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "park_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "yildiz",
+              "title": "Park Id"
+            }
+          },
+          {
+            "name": "season",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 2024,
+              "title": "Season"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WeatherResponseItem"
+                  },
+                  "title": "Response Get Weather Weather Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/telemetry": {
+      "get": {
+        "summary": "Get Telemetry",
+        "description": "Testbed telemetri serisi (sentetik/InfluxDB).",
+        "operationId": "get_telemetry_telemetry_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "node",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "node01",
+              "title": "Node"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 100,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TelemetryItem"
+                  },
+                  "title": "Response Get Telemetry Telemetry Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/qc": {
+      "post": {
+        "summary": "Post Qc",
+        "description": "Sensör zaman serisi için kalite kontrol ve arıza bayrakları raporu.",
+        "operationId": "post_qc_qc_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QCRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QCResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/simulate": {
+      "post": {
+        "summary": "Post Simulate",
+        "description": "Tekil sulama stratejisi simülasyonu.",
+        "operationId": "post_simulate_simulate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SimulateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SimulateResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/compare": {
+      "post": {
+        "summary": "Post Compare",
+        "description": "Birden çok sulama stratejisini koşturur ve CRITIC yöntemiyle sıralar.",
+        "operationId": "post_compare_compare_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompareRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompareResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/sensitivity": {
+      "post": {
+        "summary": "Post Sensitivity",
+        "description": "OAT veya Sobol parametre duyarlılık analizini koşturur.",
+        "operationId": "post_sensitivity_sensitivity_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SensitivityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SensitivityResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/testbed/state": {
+      "get": {
+        "summary": "Get Testbed State",
+        "description": "Testbed dijital ikiz durum kestirimi.",
+        "operationId": "get_testbed_state_testbed_state_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestbedStateResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/testbed/advice": {
+      "get": {
+        "summary": "Get Testbed Advice",
+        "description": "Önerilen sulama süresi ve onay isteği.",
+        "operationId": "get_testbed_advice_testbed_advice_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestbedAdviceResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CompareRequest": {
+        "properties": {
+          "park_id": {
+            "type": "string",
+            "title": "Park Id",
+            "default": "yildiz"
+          },
+          "season": {
+            "type": "integer",
+            "title": "Season",
+            "default": 2024
+          },
+          "strategies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Strategies",
+            "default": [
+              "S0",
+              "S1",
+              "S2",
+              "S3",
+              "S4"
+            ]
+          }
+        },
+        "type": "object",
+        "title": "CompareRequest"
+      },
+      "CompareResponse": {
+        "properties": {
+          "park_id": {
+            "type": "string",
+            "title": "Park Id"
+          },
+          "season": {
+            "type": "integer",
+            "title": "Season"
+          },
+          "critic_weights": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Critic Weights"
+          },
+          "ranked_strategies": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Ranked Strategies"
+          }
+        },
+        "type": "object",
+        "required": [
+          "park_id",
+          "season",
+          "critic_weights",
+          "ranked_strategies"
+        ],
+        "title": "CompareResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "ok"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "default": "0.1.0"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "default": "local"
+          }
+        },
+        "type": "object",
+        "title": "HealthResponse"
+      },
+      "ParkResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "area_m2": {
+            "type": "number",
+            "title": "Area M2"
+          },
+          "centroid_lon": {
+            "type": "number",
+            "title": "Centroid Lon"
+          },
+          "centroid_lat": {
+            "type": "number",
+            "title": "Centroid Lat"
+          },
+          "tur": {
+            "type": "string",
+            "title": "Tur"
+          },
+          "ilce": {
+            "type": "string",
+            "title": "Ilce"
+          },
+          "zones": {
+            "items": {
+              "$ref": "#/components/schemas/ZoneResponse"
+            },
+            "type": "array",
+            "title": "Zones"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "area_m2",
+          "centroid_lon",
+          "centroid_lat",
+          "tur",
+          "ilce",
+          "zones"
+        ],
+        "title": "ParkResponse"
+      },
+      "QCRequest": {
+        "properties": {
+          "records": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Records"
+          },
+          "interval_s": {
+            "type": "number",
+            "title": "Interval S",
+            "default": 60.0
+          },
+          "flat_min": {
+            "type": "integer",
+            "title": "Flat Min",
+            "default": 30
+          }
+        },
+        "type": "object",
+        "required": [
+          "records"
+        ],
+        "title": "QCRequest"
+      },
+      "QCResponse": {
+        "properties": {
+          "total_records": {
+            "type": "integer",
+            "title": "Total Records"
+          },
+          "gap_count": {
+            "type": "integer",
+            "title": "Gap Count"
+          },
+          "restart_count": {
+            "type": "integer",
+            "title": "Restart Count"
+          },
+          "out_of_range_count": {
+            "type": "integer",
+            "title": "Out Of Range Count"
+          },
+          "flags": {
+            "additionalProperties": {
+              "items": {
+                "type": "boolean"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Flags"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_records",
+          "gap_count",
+          "restart_count",
+          "out_of_range_count",
+          "flags"
+        ],
+        "title": "QCResponse"
+      },
+      "SensitivityRequest": {
+        "properties": {
+          "park_id": {
+            "type": "string",
+            "title": "Park Id",
+            "default": "yildiz"
+          },
+          "season": {
+            "type": "integer",
+            "title": "Season",
+            "default": 2024
+          },
+          "method": {
+            "type": "string",
+            "title": "Method",
+            "default": "oat"
+          }
+        },
+        "type": "object",
+        "title": "SensitivityRequest"
+      },
+      "SensitivityResponse": {
+        "properties": {
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "results": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "method",
+          "results"
+        ],
+        "title": "SensitivityResponse"
+      },
+      "SimulateRequest": {
+        "properties": {
+          "park_id": {
+            "type": "string",
+            "title": "Park Id",
+            "default": "yildiz"
+          },
+          "season": {
+            "type": "integer",
+            "title": "Season",
+            "default": 2024
+          },
+          "strategy": {
+            "type": "string",
+            "title": "Strategy",
+            "default": "S4"
+          },
+          "params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Params"
+          }
+        },
+        "type": "object",
+        "title": "SimulateRequest"
+      },
+      "SimulateResponse": {
+        "properties": {
+          "park_id": {
+            "type": "string",
+            "title": "Park Id"
+          },
+          "season": {
+            "type": "integer",
+            "title": "Season"
+          },
+          "strategy": {
+            "type": "string",
+            "title": "Strategy"
+          },
+          "metrics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metrics"
+          },
+          "daily_records": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Daily Records"
+          }
+        },
+        "type": "object",
+        "required": [
+          "park_id",
+          "season",
+          "strategy",
+          "metrics",
+          "daily_records"
+        ],
+        "title": "SimulateResponse"
+      },
+      "TelemetryItem": {
+        "properties": {
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "node": {
+            "type": "string",
+            "title": "Node"
+          },
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "soil_raw": {
+            "type": "integer",
+            "title": "Soil Raw"
+          },
+          "soil_pct": {
+            "type": "number",
+            "title": "Soil Pct"
+          },
+          "temp_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temp C"
+          },
+          "hum_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hum Pct"
+          },
+          "pump_s": {
+            "type": "integer",
+            "title": "Pump S",
+            "default": 0
+          },
+          "rssi": {
+            "type": "integer",
+            "title": "Rssi",
+            "default": -60
+          },
+          "err": {
+            "type": "integer",
+            "title": "Err",
+            "default": 0
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "synthetic"
+          }
+        },
+        "type": "object",
+        "required": [
+          "time",
+          "node",
+          "seq",
+          "soil_raw",
+          "soil_pct"
+        ],
+        "title": "TelemetryItem"
+      },
+      "TestbedAdviceResponse": {
+        "properties": {
+          "node": {
+            "type": "string",
+            "title": "Node",
+            "default": "node01"
+          },
+          "recommended_duration_s": {
+            "type": "integer",
+            "title": "Recommended Duration S"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "requires_approval": {
+            "type": "boolean",
+            "title": "Requires Approval",
+            "default": true
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "synthetic"
+          }
+        },
+        "type": "object",
+        "required": [
+          "recommended_duration_s",
+          "reason"
+        ],
+        "title": "TestbedAdviceResponse"
+      },
+      "TestbedStateResponse": {
+        "properties": {
+          "node": {
+            "type": "string",
+            "title": "Node",
+            "default": "node01"
+          },
+          "last_seen": {
+            "type": "string",
+            "title": "Last Seen"
+          },
+          "soil_raw": {
+            "type": "integer",
+            "title": "Soil Raw"
+          },
+          "soil_vwc_measured": {
+            "type": "number",
+            "title": "Soil Vwc Measured"
+          },
+          "depletion_estimated_mm": {
+            "type": "number",
+            "title": "Depletion Estimated Mm"
+          },
+          "ks_estimated": {
+            "type": "number",
+            "title": "Ks Estimated"
+          },
+          "last_command": {
+            "type": "string",
+            "title": "Last Command",
+            "default": "NONE"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "synthetic"
+          }
+        },
+        "type": "object",
+        "required": [
+          "last_seen",
+          "soil_raw",
+          "soil_vwc_measured",
+          "depletion_estimated_mm",
+          "ks_estimated"
+        ],
+        "title": "TestbedStateResponse"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "WeatherResponseItem": {
+        "properties": {
+          "time": {
+            "type": "string",
+            "title": "Time"
+          },
+          "temp_mean": {
+            "type": "number",
+            "title": "Temp Mean"
+          },
+          "temp_max": {
+            "type": "number",
+            "title": "Temp Max"
+          },
+          "temp_min": {
+            "type": "number",
+            "title": "Temp Min"
+          },
+          "rh_mean": {
+            "type": "number",
+            "title": "Rh Mean"
+          },
+          "wind_speed_2m_ms": {
+            "type": "number",
+            "title": "Wind Speed 2M Ms"
+          },
+          "rain_mm": {
+            "type": "number",
+            "title": "Rain Mm"
+          },
+          "rad_mj_m2": {
+            "type": "number",
+            "title": "Rad Mj M2"
+          },
+          "eto_mm": {
+            "type": "number",
+            "title": "Eto Mm"
+          }
+        },
+        "type": "object",
+        "required": [
+          "time",
+          "temp_mean",
+          "temp_max",
+          "temp_min",
+          "rh_mean",
+          "wind_speed_2m_ms",
+          "rain_mm",
+          "rad_mj_m2",
+          "eto_mm"
+        ],
+        "title": "WeatherResponseItem"
+      },
+      "ZoneResponse": {
+        "properties": {
+          "zone_id": {
+            "type": "string",
+            "title": "Zone Id"
+          },
+          "park_id": {
+            "type": "string",
+            "title": "Park Id"
+          },
+          "veg_type": {
+            "type": "string",
+            "title": "Veg Type"
+          },
+          "irrigation_type": {
+            "type": "string",
+            "title": "Irrigation Type"
+          },
+          "area_m2": {
+            "type": "number",
+            "title": "Area M2"
+          },
+          "app_rate_mm_h": {
+            "type": "number",
+            "title": "App Rate Mm H"
+          },
+          "valve_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valve Id"
+          },
+          "controller_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Controller Id"
+          },
+          "water_source": {
+            "type": "string",
+            "title": "Water Source",
+            "default": "unknown"
+          },
+          "irrigated_fraction": {
+            "type": "number",
+            "title": "Irrigated Fraction",
+            "default": 0.6
+          }
+        },
+        "type": "object",
+        "required": [
+          "zone_id",
+          "park_id",
+          "veg_type",
+          "irrigation_type",
+          "area_m2",
+          "app_rate_mm_h"
+        ],
+        "title": "ZoneResponse"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

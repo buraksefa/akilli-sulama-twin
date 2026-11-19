@@ -1,0 +1,8 @@
+Sezon 2020: hava verisi kaynağı = era5
+Sezon 2021: hava verisi kaynağı = era5
+Sezon 2022: hava verisi kaynağı = era5
+Sezon 2023: hava verisi kaynağı = era5
+Sezon 2024: hava verisi kaynağı = era5
+Süre: 163.2 s, 1300 sezon koşusu
+✅ Kaydedildi: outputs/noisy_state/noisy_state_yildiz.csv
+.venv/bin/twin noisy-state --seeds 10  161.71s user 2.09s system 98% cpu 2:46.90 total

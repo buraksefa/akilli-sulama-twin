@@ -1,0 +1,77 @@
+#cloud-config
+# Ubuntu Server 24.04 LTS otomatik kurulum (autoinstall) dosyası: genel amaçlı ev sunucusu.
+#
+# DİKKAT:
+#  - Bu dosya hedef diskin TAMAMINI siler. Eski Windows ve içindeki her şey gider. Önce yedek al.
+#  - <...> ile işaretli yerleri doldurmadan kullanma (docs/install_ubuntu.md, 2. bölüm).
+#  - Bu dosyada Wi-Fi parolası ve geçici disk şifresi düz metin durur. Dosyayı kurulum USB'sinden
+#    başka yere kopyalama, git'e koyma, kurulumdan sonra USB'yi sil. Disk şifresini ilk girişte değiştir.
+autoinstall:
+  version: 1
+  locale: tr_TR.UTF-8
+  keyboard:
+    layout: tr
+  timezone: Europe/Istanbul
+
+  # Kurulum sırasında ağ: Wi-Fi. Kurulum ortamı dizüstünün Wi-Fi çipini tanımazsa kurulum
+  # ağ olmadan devam edemez; o durumda geçici olarak ethernet kablosu tak.
+  network:
+    version: 2
+    wifis:
+      wlan0:
+        dhcp4: true
+        optional: true
+        access-points:
+          "<WIFI_ADI>":
+            password: "<WIFI_PAROLASI>"
+
+  identity:
+    hostname: <HOSTNAME>            # örn. ev-sunucu
+    username: <KULLANICI>           # örn. burak
+    # Üret: openssl passwd -6   (Windows'ta: wsl openssl passwd -6, ya da kurulum sonrası passwd ile değiştir)
+    password: "<PAROLA_HASH>"
+
+  ssh:
+    install-server: true
+    allow-pw: false                 # yalnızca anahtarla giriş
+    authorized-keys:
+      - "<SSH_PUBLIC_KEY>"          # id_ed25519.pub dosyasının tek satırı
+
+  storage:
+    layout:
+      name: lvm
+      # GEÇİCİ disk şifresi. Her açılışta sorulur. İlk girişten sonra değiştir:
+      #   sudo cryptsetup luksChangePassword /dev/<bolum>
+      password: "<GECICI_DISK_SIFRESI>"
+
+  packages:
+    - ufw
+    - docker.io
+    - docker-compose-v2
+    - git
+    - python3-venv
+    - python3-pip
+    - mosquitto-clients
+    - tlp
+    - htop
+    - unattended-upgrades
+    - cryptsetup
+
+  updates: security
+
+  late-commands:
+    # Kapak kapanınca uyumasın (sunucu kapalı kapakla çalışacak)
+    - |
+      mkdir -p /target/etc/systemd/logind.conf.d
+      printf '[Login]\nHandleLidSwitch=ignore\nHandleLidSwitchExternalPower=ignore\nHandleLidSwitchDocked=ignore\n' \
+        > /target/etc/systemd/logind.conf.d/lid.conf
+    # Güvenlik duvarı: varsayılan her şey gelen kapalı, yalnızca yerel ağdan ssh açık.
+    # Servis portları (MQTT, Grafana) proje kurulurken ayrıca açılır. Ağ bloğunu kendi ağına göre düzelt.
+    - curtin in-target --target=/target -- ufw default deny incoming
+    - curtin in-target --target=/target -- ufw default allow outgoing
+    - curtin in-target --target=/target -- ufw allow from 192.168.0.0/16 to any port 22 proto tcp
+    - curtin in-target --target=/target -- ufw --force enable
+    - curtin in-target --target=/target -- systemctl enable docker
+    # Kullanıcıyı docker grubuna ekle (docker grubu root'a eşdeğerdir; yerel agent için ayrı kullanıcı aç, ona verme)
+    - curtin in-target --target=/target -- usermod -aG docker <KULLANICI>
+  shutdown: reboot

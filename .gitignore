@@ -1,0 +1,33 @@
+# Parolalar ve anahtarlar
+firmware/sulama_node/config.h
+server/.env
+server/mosquitto/config/passwd
+
+# Veri (ham ölçümler ve özellikle İSKİ verisi depoya girmez)
+data/raw/*
+data/processed/*
+data/iski/
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+*.nc
+*.csv
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Halka acik veri istisnasi
+!data/public/
+!data/public/*
+
+# İşlenmiş ERA5 günlük özetleri depoya girer (çevrimiçi ekran gerçek veriyle çalışsın; ~440 KB).
+# Ham NetCDF (data/raw) ve İSKİ verisi girmez.
+!data/processed/era5_*.csv
+
+# Yerel araç/OS dosyaları
+.DS_Store
+.pytest_cache/
+.ruff_cache/
+.claude/
