@@ -324,6 +324,56 @@ def noisy_state(
     typer.echo(f"✅ Kaydedildi: {out_path / f'noisy_state_{park}.csv'}")
 
 
+@app.command("forecast-skill")
+def forecast_skill(
+    year: int = typer.Option(2024, "--year", help="Sezon (önceki-koşu arşivi 2024'ten itibaren var)"),
+    seeds: int = typer.Option(10, "--seeds", help="Sensör gürültüsü tohum sayısı"),
+    lead: int = typer.Option(1, "--lead", help="Kararda kullanılan tahmin vadesi (gün)"),
+    out_dir: str = typer.Option("outputs/forecast_skill", "--out", help="CSV çıktı dizini"),
+):
+    """Open-Meteo tahmin isabeti (ERA5'e göre) ve tahmine dayalı kararın sanal parktaki değeri."""
+    import time
+
+    from twin.config import TwinConfig
+    from twin.data.forecast import fetch_previous_runs_daily
+    from twin.sim.forecast_skill import decision_value, skill_table
+    from twin.sim.virtual_world import build_world, load_world_spec
+
+    cache = Path(f"data/external/open_meteo_previous_runs_yildiz_{year}.csv")
+    if cache.is_file():
+        fc = pd.read_csv(cache, index_col=0, parse_dates=True)
+        typer.echo(f"Tahmin arşivi: {cache}")
+    else:
+        era5 = TwinConfig().era5
+        fc = fetch_previous_runs_daily(
+            float(era5.yildiz_lat.value), float(era5.yildiz_lon.value), f"{year}-04-01", f"{year}-10-31"
+        )
+        fc["source"] = "open_meteo_previous_runs"
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        fc.to_csv(cache)
+        typer.echo(f"Tahmin arşivi indirildi: {cache}")
+    weather = prepare_season_weather(season_year=year, source="era5", park_id="yildiz")
+    out_path = Path(out_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+
+    skill = skill_table(fc, weather)
+    skill["referans"] = weather.attrs.get("source")
+    skill.to_csv(out_path / f"skill_yildiz_{year}.csv", index=False)
+    t0 = time.perf_counter()
+    world = build_world(load_world_spec("data/scenarios/yildiz_dunya.json"), "data/public/parks.geojson")
+    dv = decision_value(world, weather, fc, lead=lead, seeds=range(seeds))
+    dv.to_csv(out_path / f"decision_value_yildiz_{year}.csv", index=False)
+    typer.echo(f"Karar değeri koşusu: {time.perf_counter() - t0:.1f} s")
+    typer.echo(
+        skill[["tahmin", "eto_mae_mm", "eto_bias_mm", "yagis_mae_mm", "pod_1mm", "far_1mm"]]
+        .round(3)
+        .to_string(index=False)
+    )
+    g = dv.groupby(["strateji", "bilgi"])[["su_m3", "stresli_alan_ort_pct", "derin_sizma_m3"]].mean().round(1)
+    typer.echo(g.to_string())
+    typer.echo(f"✅ Kaydedildi: {out_path}")
+
+
 @app.command("compare")
 def compare(
     park: str = typer.Option("yildiz", "--park", help="Park ID"),

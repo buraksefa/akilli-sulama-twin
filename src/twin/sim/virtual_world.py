@@ -311,6 +311,8 @@ class ZoneTwin:
         self.dr_hat = 0.0
         self.last_dose = 0.0
         self.enkf = None
+        # isteğe bağlı günlük tahmin tablosu (sütunlar: eto_fc, rain_fc); None ise kalıcılık kullanılır
+        self.forecast: Optional[pd.DataFrame] = None
         if estimator == "enkf":
             self.enkf = EnsembleKalmanFilter(
                 num_members=40,
@@ -353,7 +355,12 @@ class ZoneTwin:
             self.last_dose = self._fixed_dose(day)
             return self.last_dose
         eto_y = self.estimate(date, yesterday, obs)
-        self.last_dose = self._jit_dose(self.dr_hat, self.kc(date.month) * eto_y, 0.0)
+        if self.forecast is not None and date in self.forecast.index:
+            row = self.forecast.loc[date]
+            etc, rain = self.kc(date.month) * float(row["eto_fc"]), float(row["rain_fc"])
+        else:
+            etc, rain = self.kc(date.month) * eto_y, 0.0
+        self.last_dose = self._jit_dose(self.dr_hat, etc, rain)
         return self.last_dose
 
     def estimate(self, date: pd.Timestamp, yesterday: Optional[pd.Series], obs: Optional[float]) -> float:
@@ -432,7 +439,10 @@ def run_world(
     margin: float = 0.9,
     sensor_seed: int = 0,
     config: Optional[TwinConfig] = None,
+    forecast: Optional[pd.DataFrame] = None,
 ) -> WorldRun:
+    """Dünyayı gün gün yürütür. `forecast` verilirse ikizler bugünün kararında tahmin edilen ETo ve
+    yağışı (`eto_fc`, `rain_fc`) kullanır; verilmezse dünkü ETo ve sıfır yağış (kalıcılık)."""
     cfg = config or TwinConfig()
     _, policy, estimator = STRATEGIES[strategy]
     rng = np.random.default_rng(sensor_seed)
@@ -440,6 +450,8 @@ def run_world(
         ZoneTwin(z, world.spec, cfg, policy, estimator, margin, seed=sensor_seed * 1000 + i)
         for i, z in enumerate(world.zones)
     ]
+    for tw in twins:
+        tw.forecast = forecast
     for s in world.sensors:
         s.sensor._frozen = None
 

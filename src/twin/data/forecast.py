@@ -63,3 +63,54 @@ def fetch_open_meteo_daily(
     resp = requests.get(OPEN_METEO_URL, params=params, timeout=timeout_s)
     resp.raise_for_status()
     return parse_open_meteo_daily(resp.json(), today or pd.Timestamp.now(tz=TIMEZONE).date())
+
+
+PREVIOUS_RUNS_URL = "https://previous-runs-api.open-meteo.com/v1/forecast"
+
+
+def parse_previous_runs_hourly(payload: dict, leads: range) -> pd.DataFrame:
+    """Saatlik önceki-koşu yanıtını günlük toplamlara çevirir (UTC günleri, ERA5 ile aynı sınır).
+
+    Sütunlar: `eto_d{k}`, `rain_d{k}` = k gün önce yayımlanmış tahminin o güne ait toplamı [mm].
+    k = 0 en güncel koşudur. Bir günün herhangi bir saati eksikse o günün değeri NaN olur.
+    """
+    hourly = payload["hourly"]
+    idx = pd.to_datetime(hourly["time"])
+    cols = {}
+    for k in leads:
+        suffix = "" if k == 0 else f"_previous_day{k}"
+        cols[f"eto_d{k}"] = hourly[f"et0_fao_evapotranspiration{suffix}"]
+        cols[f"rain_d{k}"] = hourly[f"precipitation{suffix}"]
+    df = pd.DataFrame(cols, index=idx).astype(float)
+    daily = df.resample("D").sum(min_count=24)
+    daily.index.name = "time"
+    daily.attrs["source"] = "open_meteo_previous_runs"
+    daily.attrs["grid_latitude"] = payload.get("latitude")
+    daily.attrs["grid_longitude"] = payload.get("longitude")
+    return daily
+
+
+def fetch_previous_runs_daily(
+    latitude: float,
+    longitude: float,
+    start: str,
+    end: str,
+    leads: range = range(0, 8),
+    timeout_s: float = 60.0,
+) -> pd.DataFrame:
+    """Open-Meteo Previous Runs API: k gün önceden yapılmış tahminlerin günlük toplamları (UTC)."""
+    hourly = []
+    for k in leads:
+        suffix = "" if k == 0 else f"_previous_day{k}"
+        hourly += [f"et0_fao_evapotranspiration{suffix}", f"precipitation{suffix}"]
+    params = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "start_date": start,
+        "end_date": end,
+        "hourly": ",".join(hourly),
+        "timezone": "GMT",
+    }
+    resp = requests.get(PREVIOUS_RUNS_URL, params=params, timeout=timeout_s)
+    resp.raise_for_status()
+    return parse_previous_runs_hourly(resp.json(), leads)
