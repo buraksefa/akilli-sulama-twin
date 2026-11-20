@@ -92,3 +92,14 @@ def test_all_strategies_run_and_are_seeded(world, key):
     b = summarize_run(run_world(world, w, key, sensor_seed=3))
     assert a == pytest.approx(b, nan_ok=True)
     assert run_world(world, w, key).source == "synthetic"
+
+
+def test_zones_have_irrigation_system_and_runtime(world):
+    """Her zonun bir sulama sistemi var; çalışma süresi = doz / uygulama hızı."""
+    from twin.sim.virtual_world import runtime_minutes
+
+    assert {z.irrigation for z in world.zones} <= {"yağmurlama", "damla"}
+    dose = np.full(len(world.zones), 10.0)
+    mins = runtime_minutes(world, dose)
+    rates = np.array([z.application_rate_mm_h for z in world.zones])
+    np.testing.assert_allclose(mins, 10.0 / rates * 60.0)

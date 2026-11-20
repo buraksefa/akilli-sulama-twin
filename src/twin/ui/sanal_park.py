@@ -26,6 +26,7 @@ from twin.sim.virtual_world import (
     build_world,
     load_world_spec,
     run_world,
+    runtime_minutes,
     summarize_run,
 )
 
@@ -34,6 +35,7 @@ SPEC_PATH = ROOT / "data" / "scenarios" / "yildiz_dunya.json"
 GEOJSON = ROOT / "data" / "public" / "parks.geojson"
 
 VEG_COLORS = {"turf": "#7bc96f", "tree": "#1b6e3a", "shrub": "#c9a227", "flower": "#d6457a"}
+SYSTEM_COLORS = {"yağmurlama": ("#3d8bd9", "#22609f"), "damla": ("#2fa58c", "#1d7462")}
 STRAT_COLORS = {"S0": "#9a6700", "MODEL": "#6e7781", "SENSOR": "#8250df", "ENKF": "#0969da"}
 FAULT_TEXT = {"none": "sağlam", "drift": "kayıyor", "freeze": "donuyor", "dropout": "veri kaybediyor"}
 FAULT_COLOR = {"none": "#ffffff", "drift": "#f0b400", "freeze": "#f0b400", "dropout": "#cf222e"}
@@ -151,14 +153,14 @@ st.markdown(
 src_tag = "Hava: ERA5-Land (gerçek)" if source == "era5" else "Hava: SENTETİK"
 st.markdown(
     f'<span class="tag">{src_tag}</span><span class="tag">Sınır: İBB Yıldız Korusu poligonu</span>'
-    f'<span class="tag">İç dağılım: rastgele sanal dünya</span><span class="tag">Çıktı: yalnız öneri</span>',
+    f'<span class="tag">İç dağılım: rastgele sanal dünya</span><span class="tag">Karar: zon sulama sistemleri (sanal)</span>',
     unsafe_allow_html=True,
 )
 with st.expander("Bu test ortamı nasıl çalışır?"):
     c1, c2, c3 = st.columns(3)
     c1.markdown(
         '<div class="layer"><b>1 · Sanal dünya (gizli)</b><span>Park 10 m\'lik hücrelere bölünür. Her hücrenin bitkisi, '
-        "toprağı, kök derinliği ve gölgesi rastgele farklıdır. ERA5 havasıyla her hücrenin su deposu gün gün değişir."
+        "toprağı, kök derinliği ve gölgesi rastgele farklıdır. ERA5 havası ve sulamayla her hücrenin toprak nemi gün gün değişir."
         "</span></div>",
         unsafe_allow_html=True,
     )
@@ -169,8 +171,9 @@ with st.expander("Bu test ortamı nasıl çalışır?"):
     )
     c3.markdown(
         '<div class="layer"><b>3 · Dijital ikiz (sınanan)</b><span>Her sulama zonu için yalnız sensörleri, dünün havasını '
-        "ve ortalama (nominal) parametreleri bilir; zonun su açığını kestirir, sulama önerir. Öneri sanal dünyaya "
-        "uygulanır ve sonuç dünyadan ölçülür.</span></div>",
+        "ve ortalama (nominal) parametreleri bilir; zonun toprak nemini kestirir ve zonun sulama sistemini "
+        "(yağmurlama ya da damla) bugün kaç dakika çalıştıracağına karar verir. Sanal parkta karar sisteme uygulanır, "
+        "sonuç dünyadan ölçülür.</span></div>",
         unsafe_allow_html=True,
     )
     st.caption(
@@ -181,11 +184,14 @@ with st.expander("Bu test ortamı nasıl çalışır?"):
 
 # ------------------------------------------------------------------ sanal park haritası
 st.subheader("Sanal park")
+map_mode = st.radio(
+    "Harita", ["Bitki türleri", "Sulama sistemleri ve zonlar"], horizontal=True, label_visibility="collapsed"
+)
 veg_grid = world.to_grid(world.veg_c.astype(float))
 counts = {k: int((world.veg_c == i).sum()) for i, k in enumerate(VEG_KEYS)}
 spec_veg = world.spec["vegetation"]
 fig = go.Figure()
-for i, k in enumerate(VEG_KEYS):
+for i, k in enumerate(VEG_KEYS if map_mode == "Bitki türleri" else []):
     z = np.where(veg_grid == i, 1.0, np.nan)
     fig.add_trace(
         go.Heatmap(
@@ -207,6 +213,47 @@ for i, k in enumerate(VEG_KEYS):
             name=f"{spec_veg[k]['label']} · {counts[k] * world.cell_area_m2 / 10000:.1f} ha",
         )
     )
+if map_mode != "Bitki türleri":
+    zone_grid = world.to_grid(world.zone_c.astype(float))
+    for zi, zn in enumerate(world.zones):
+        color = SYSTEM_COLORS[zn.irrigation][zi % 2]
+        fig.add_trace(
+            go.Heatmap(
+                x=world.x,
+                y=world.y,
+                z=np.where(zone_grid == zi, 1.0, np.nan),
+                colorscale=[[0, color], [1, color]],
+                showscale=False,
+                hovertemplate=(
+                    f"{zn.zone_id} · {zn.label}<br>{zn.irrigation}, {zn.application_rate_mm_h:g} mm/saat"
+                    f"<br>{zn.area_m2 / 10000:.2f} ha<extra></extra>"
+                ),
+            )
+        )
+        cells = world.cell_rc[world.zone_c == zi]
+        cx, cy = world.x[cells[:, 1]].mean(), world.y[cells[:, 0]].mean()
+        fig.add_trace(
+            go.Scatter(
+                x=[cx],
+                y=[cy],
+                mode="text",
+                text=[zn.zone_id],
+                textfont=dict(color="#ffffff", size=11),
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+    for system, (c1_, _) in SYSTEM_COLORS.items():
+        rate = next(z.application_rate_mm_h for z in world.zones if z.irrigation == system)
+        fig.add_trace(
+            go.Scatter(
+                x=[None],
+                y=[None],
+                mode="markers",
+                marker=dict(size=12, color=c1_, symbol="square"),
+                name=f"{system} ({rate:g} mm/saat)",
+            )
+        )
 add_boundary(fig, world)
 add_sensors(fig, world, None)
 fig.add_trace(
@@ -234,7 +281,8 @@ with c_info:
     n_fault = sum(s.sensor.fault.type != "none" for s in world.sensors)
     st.metric("Sanal sensör", f"{len(world.sensors)}", help=f"{n_fault} tanesi arızalı üretildi.")
     st.caption(
-        "Zonlar, park dört bloğa bölünüp her blokta bitki türüne göre ayrılarak oluşturuldu; her zonun tek vanası var."
+        "Zonlar, park dört bloğa bölünüp her blokta bitki türüne göre ayrılarak oluşturuldu. Her zonun tek bir "
+        "sulama sistemi var: çim ve çiçek tarhında yağmurlama, ağaçlık ve çalıda damla."
     )
 
 # ------------------------------------------------------------------ gün gün
@@ -296,11 +344,35 @@ st.plotly_chart(f2, width="stretch")
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("ETo / yağış", f"{weather['eto_mm'].iloc[day]:.1f} / {weather['rain_mm'].iloc[day]:.1f} mm")
 m2.metric("Strese giren alan", f"{100 * run.stressed_area_frac[day]:.0f} %")
-m3.metric("Bugünkü sulama önerisi", f"{run.water_m3[day]:,.0f} m³")
+m3.metric("Bugün verilen su (tüm sistemler)", f"{run.water_m3[day]:,.0f} m³")
 m4.metric("Sezon başından beri", f"{run.water_m3[: day + 1].sum():,.0f} m³")
 st.caption(
     "Renk: mavi = toprak dolu, sarı = stres eşiğine yakın, kırmızı = bitki susuz. Sol harita her hücrenin gerçek durumu; "
     "sağ harita ikizin zon başına tek bir tahmini. İki harita arasındaki fark, ikizin hatasıdır."
+)
+
+st.markdown(f"**{dates[day]:%d %B %Y} sulama kararı · {STRATEGIES[shown][0]}**")
+mins = runtime_minutes(world, run.dose_mm[day])
+decision = pd.DataFrame(
+    {
+        "zon": [z.zone_id for z in world.zones],
+        "bitki": [z.label for z in world.zones],
+        "sistem": [z.irrigation for z in world.zones],
+        "alan (ha)": [round(z.area_m2 / 10000, 2) for z in world.zones],
+        "ikizin gördüğü (açık/eşik)": np.round(run.dr_hat[day] / raw_nominal, 2),
+        "gerçek ort. (açık/eşik)": np.round(
+            np.bincount(world.zone_c, weights=run.dr_true[day] / world.raw_c, minlength=len(world.zones))
+            / np.bincount(world.zone_c, minlength=len(world.zones)),
+            2,
+        ),
+        "çalışma süresi (dk)": np.round(mins).astype(int),
+        "su (m³)": np.round(run.dose_mm[day] * np.array([z.area_m2 for z in world.zones]) / 1000, 1),
+    }
+)
+st.dataframe(decision.sort_values("çalışma süresi (dk)", ascending=False), width="stretch", hide_index=True)
+st.caption(
+    "Çalışma süresi = brüt doz / sistemin uygulama hızı. Sanal parkta bu karar sistemlere otomatik uygulanır; "
+    "gerçek parkta karar mekanizması yalnız öneri üretir ve onay gerektirir (CLAUDE.md §2.3)."
 )
 
 # ------------------------------------------------------------------ strateji karşılaştırması

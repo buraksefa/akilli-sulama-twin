@@ -58,6 +58,8 @@ class WorldZone:
     n_cells: int
     area_m2: float
     efficiency: float
+    irrigation: str  # sulama sistemi: yağmurlama / damla
+    application_rate_mm_h: float  # sistemin alana su verme hızı
     # ikizin bildiği nominal değerler
     kc_nominal: tuple
     zr_nominal: float
@@ -212,6 +214,8 @@ def build_world(spec: dict, geojson_path: str | Path) -> World:
                     n_cells=int(m.sum()),
                     area_m2=float(m.sum() * g * g),
                     efficiency=float(vs["efficiency"]),
+                    irrigation=str(vs["irrigation"]),
+                    application_rate_mm_h=float(vs["application_rate_mm_h"]),
                     kc_nominal=kc_nom,
                     zr_nominal=float(np.mean(vs["root_depth_m"])),
                     p_nominal=float(vs["p_depletion"]),
@@ -478,6 +482,12 @@ def run_world(
         sensors=pd.DataFrame(sensor_rows),
         source=weather.attrs.get("source", "unknown"),
     )
+
+
+def runtime_minutes(world: World, dose_mm: np.ndarray) -> np.ndarray:
+    """Zon brüt dozlarını [mm] sulama sisteminin çalışma süresine [dk] çevirir: süre = doz / uygulama hızı."""
+    rate = np.array([z.application_rate_mm_h for z in world.zones])
+    return dose_mm / rate * 60.0
 
 
 def summarize_run(run: WorldRun) -> Dict[str, float]:
