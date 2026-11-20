@@ -28,8 +28,11 @@ ROOT = Path(__file__).resolve().parents[3]
 SCENARIO_DIR = ROOT / "data" / "scenarios"
 
 STRATEGIES = {
-    "S0": ("Sabit takvim", "3 günde bir 12 mm. Bugünkü yaygın uygulamaya benzer; havaya bakmaz."),
-    "S1": ("Sensör eşiği", "Sensör 'kuru' derse toprağı tarla kapasitesine kadar doldurur. Sensöre güvenir."),
+    "S0": (
+        "Sabit takvim",
+        "3 günde bir 12 mm. Parklarda yaygın sabit saatli sulamaya benzer; havaya bakmaz.",
+    ),
+    "S1": ("Sensör eşiği", "Sensör 'kuru' derse toprağı tamamen doyana kadar sular. Sensöre güvenir."),
     "S2": ("Yalnız hava (ET)", "Sensörsüz; hava verisiyle toprağın kuruduğunu hesaplar, eşikte doldurur."),
     "S3": ("Yağış tahminli", "S2 gibi; ertesi gün ≥ 5 mm yağış bekleniyorsa sulamayı erteler."),
     "S4": ("Asimile ikiz (EnKF)", "Model ile sensörü birleştirir (Kalman filtresi), eşikte doldurur."),
@@ -93,7 +96,7 @@ if not scenarios:
 # ------------------------------------------------------------------ kenar çubuğu
 with st.sidebar:
     st.subheader("Karşılaştırma")
-    year = st.selectbox("Sezon (1 Nisan – 31 Ekim)", [2020, 2021, 2022, 2023, 2024], index=4)
+    year = st.selectbox("Sulama dönemi (1 Nisan – 31 Ekim)", [2020, 2021, 2022, 2023, 2024], index=4)
     keys = list(STRATEGIES)
     key_a = st.selectbox(
         "A · mevcut yaklaşım", keys, index=0, format_func=lambda k: f"{k} · {STRATEGIES[k][0]}"
@@ -140,7 +143,7 @@ with st.expander("Bu simülasyon nasıl çalışır?", expanded=False):
         ("1 · Hava", "Her gün ERA5-Land'den buharlaşma ihtiyacı (ETo) ve yağış."),
         (
             "2 · Toprak su deposu",
-            "Kök bölgesi bir depo gibi: yağış ve sulama doldurur, bitki tüketir (FAO-56).",
+            "Çimin kök bölgesi bir depo gibi: yağış ve sulama doldurur, çim ve toprak buharlaştırır (FAO-56).",
         ),
         ("3 · Sanal sensörler", "Gerçek nemi gürültü ve arızalarla (kayma, donma, veri kaybı) ölçer."),
         ("4 · Karar", "Strateji o günün sulama önerisini verir; depo bir gün ilerler."),
@@ -246,9 +249,9 @@ def bars(t):
 frames = [go.Frame(data=bars(t), name=pd.Timestamp(t).strftime("%d %b")) for t in dates]
 fig2 = go.Figure(data=bars(dates[0]), frames=frames)
 lines = (
-    (taw, "tarla kapasitesi (dolu)", "dot"),
+    (taw, "toprak dolu (su tutma kapasitesi)", "dot"),
     (taw - raw, "stres eşiği", "dash"),
-    (0, "solma noktası (boş)", "dot"),
+    (0, "toprak boş (solma noktası)", "dot"),
 )
 for y, txt, dash in lines:
     fig2.add_hline(
