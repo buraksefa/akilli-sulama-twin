@@ -374,6 +374,54 @@ def forecast_skill(
     typer.echo(f"✅ Kaydedildi: {out_path}")
 
 
+@app.command("heterogeneity")
+def heterogeneity(
+    years: str = typer.Option("2024", "--years", help="Virgülle ayrılmış sezonlar (ör. 2020,2022,2024)"),
+    seeds: int = typer.Option(10, "--seeds", help="Sensör gürültüsü/arıza tohum sayısı"),
+    out_dir: str = typer.Option("outputs/heterogeneity", "--out", help="CSV çıktı dizini"),
+    no_faults: bool = typer.Option(False, "--no-faults", help="Sensör arızalarını kapat (yalnız gürültü)"),
+):
+    """Zon içi farklılık: güvenlik payı × sensör yerleşimi × zon boyutu (sanal Yıldız dünyası, ERA5 hava)."""
+    import time
+
+    from twin.sim.heterogeneity import heterogeneity_experiment, summarize_experiment
+    from twin.sim.virtual_world import load_world_spec
+
+    spec = load_world_spec("data/scenarios/yildiz_dunya.json")
+    if no_faults:
+        spec["sensors"]["fault_probabilities"] = {k: 0.0 for k in spec["sensors"]["fault_probabilities"]}
+    out_path = Path(out_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+    for year in [int(y) for y in years.split(",")]:
+        weather = prepare_season_weather(season_year=year, source="era5", park_id="yildiz")
+        t0 = time.perf_counter()
+        df = heterogeneity_experiment(spec, "data/public/parks.geojson", weather, seeds=range(seeds))
+        df.insert(0, "yil", year)
+        df.insert(1, "sensor_arizasi", not no_faults)
+        summ = summarize_experiment(df)
+        summ.insert(0, "yil", year)
+        summ.insert(1, "sensor_arizasi", not no_faults)
+        df.to_csv(out_path / f"heterogeneity_runs_yildiz_{year}.csv", index=False)
+        summ.to_csv(out_path / f"heterogeneity_summary_yildiz_{year}.csv", index=False)
+        typer.echo(
+            f"{year}: {len(df)} koşu, {time.perf_counter() - t0:.1f} s, kaynak {weather.attrs.get('source')}"
+        )
+        cols = [
+            "zon_duzeni",
+            "zon_sayisi",
+            "sensor_sayisi",
+            "yerlesim",
+            "strateji",
+            "pay",
+            "su_m3",
+            "su_kahine_orani",
+            "stresli_alan_ort_pct",
+            "stresli_alan_maks_pct",
+        ]
+        typer.echo(summ[cols].round(3).to_string(index=False))
+    typer.echo(f"✅ Kaydedildi: {out_path}")
+
+
 @app.command("compare")
 def compare(
     park: str = typer.Option("yildiz", "--park", help="Park ID"),

@@ -58,6 +58,401 @@ CSS = """
 """
 
 
+# toprak nemi durumu: açık/eşik oranına göre dört sınıf (eşikler: 0,5 · güvenlik payı · 1,0)
+STATE_LABELS = ["Nemli", "Uygun", "Sulama gerekli", "Stres (susuz)"]
+STATE_COLORS = ["#2c7fb8", "#8fd19e", "#f2c14e", "#c0392b"]
+VEG_SHORT = {"turf": "Çim", "tree": "Ağaç", "shrub": "Çalı", "flower": "Çiçek"}
+
+
+def state_class(ratio, margin: float):
+    r = np.asarray(ratio, dtype=float)
+    out = np.select([r < 0.5, r < margin, r < 1.0], [0, 1, 2], default=3).astype(float)
+    return np.where(np.isnan(r), np.nan, out)
+
+
+def _discrete_scale(colors):
+    n = len(colors)
+    scale = []
+    for i, c in enumerate(colors):
+        scale += [[i / n, c], [(i + 1) / n, c]]
+    return scale
+
+
+def zone_name(z) -> str:
+    return f"{VEG_SHORT.get(z.veg, z.veg)} {z.zone_id.split('-')[-1]}"
+
+
+def nominal_raw(world) -> np.ndarray:
+    soil = world.spec["soil"]
+    taw = np.array(
+        [1000 * (soil["theta_fc"]["mean"] - soil["theta_wp"]["mean"]) * z.zr_nominal for z in world.zones]
+    )
+    return np.array([z.p_nominal for z in world.zones]) * taw
+
+
+def zone_borders(world):
+    """Komşu hücrelerin zonu farklıysa aradaki kenarı çizgi parçası olarak döndürür."""
+    grid = world.to_grid(world.zone_c.astype(float))
+    grid = np.where(np.isnan(grid), -1, grid)
+    g = float(world.spec["grid_m"]) / 2
+    xs, ys = [], []
+    r, c = np.nonzero((grid[:, :-1] != grid[:, 1:]) & (grid[:, :-1] >= 0) & (grid[:, 1:] >= 0))
+    for ri, ci in zip(r, c):
+        xb = world.x[ci] + g
+        xs += [xb, xb, None]
+        ys += [world.y[ri] - g, world.y[ri] + g, None]
+    r, c = np.nonzero((grid[:-1, :] != grid[1:, :]) & (grid[:-1, :] >= 0) & (grid[1:, :] >= 0))
+    for ri, ci in zip(r, c):
+        yb = world.y[ri] + g
+        xs += [world.x[ci] - g, world.x[ci] + g, None]
+        ys += [yb, yb, None]
+    return xs, ys
+
+
+def state_map(world, cell_ratio, margin: float, zone_text, selected=None, height=560):
+    """Dört sınıflı toprak nemi haritası; zon sınırları, büyük zonlarda ad etiketi, tıklanabilir hücreler."""
+    cls = state_class(cell_ratio, margin)
+    fig = go.Figure()
+    fig.add_trace(
+        go.Heatmap(
+            x=world.x,
+            y=world.y,
+            z=world.to_grid(cls),
+            zmin=-0.5,
+            zmax=3.5,
+            colorscale=_discrete_scale(STATE_COLORS),
+            showscale=False,
+            hoverinfo="skip",
+        )
+    )
+    if selected is not None:
+        sel = world.to_grid(np.where(world.zone_c == selected, 1.0, np.nan))
+        fig.add_trace(
+            go.Heatmap(
+                x=world.x,
+                y=world.y,
+                z=sel,
+                colorscale=[[0, "#000"], [1, "#000"]],
+                opacity=0.25,
+                showscale=False,
+                hoverinfo="skip",
+            )
+        )
+    bx, by = zone_borders(world)
+    fig.add_trace(
+        go.Scatter(
+            x=bx,
+            y=by,
+            mode="lines",
+            line=dict(color="rgba(36,41,47,.55)", width=1),
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+    add_boundary(fig, world)
+    # tıklama katmanı: her hücre bir nokta (görünmez); customdata = zon dizini
+    xs = world.x[world.cell_rc[:, 1]]
+    ys = world.y[world.cell_rc[:, 0]]
+    fig.add_trace(
+        go.Scatter(
+            x=xs,
+            y=ys,
+            mode="markers",
+            marker=dict(size=9, color="rgba(0,0,0,0.01)", symbol="square"),
+            customdata=world.zone_c,
+            hovertext=[zone_text[zi] for zi in world.zone_c],
+            hoverinfo="text",
+            showlegend=False,
+            name="zonlar",
+        )
+    )
+    big = [zi for zi, z in enumerate(world.zones) if z.area_m2 >= 6000]
+    lx, ly, lt = [], [], []
+    for zi in big:
+        cells = world.cell_rc[world.zone_c == zi]
+        # etiketi zonun merkezine en yakın iç hücreye koy (zon dışına taşmasın)
+        cx, cy = world.x[cells[:, 1]].mean(), world.y[cells[:, 0]].mean()
+        k = np.argmin((world.x[cells[:, 1]] - cx) ** 2 + (world.y[cells[:, 0]] - cy) ** 2)
+        lx.append(world.x[cells[k, 1]])
+        ly.append(world.y[cells[k, 0]])
+        lt.append(f"<b>{zone_name(world.zones[zi])}</b>")
+    fig.add_trace(
+        go.Scatter(
+            x=lx,
+            y=ly,
+            mode="text",
+            text=lt,
+            textfont=dict(size=11, color="#111"),
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+    for lab, col in zip(STATE_LABELS, STATE_COLORS):
+        fig.add_trace(
+            go.Scatter(
+                x=[None], y=[None], mode="markers", marker=dict(size=13, color=col, symbol="square"), name=lab
+            )
+        )
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False, scaleanchor="x", constrain="domain")
+    fig.update_layout(
+        height=height,
+        margin=dict(l=0, r=0, t=0, b=0),
+        plot_bgcolor="rgba(0,0,0,0)",
+        legend=dict(orientation="h", y=1.02, x=0, yanchor="bottom"),
+        clickmode="event+select",
+        dragmode=False,
+        hoverlabel=dict(bgcolor="white"),
+    )
+    return fig
+
+
+def pick_zone(event, key: str, n_zones: int, default: int) -> int:
+    """Haritadan tıklanan zonu oturumda tutar."""
+    pts = (event or {}).get("selection", {}).get("points", []) if event else []
+    for pt in pts:
+        cd = pt.get("customdata")
+        if cd is not None:
+            st.session_state[key] = int(cd[0] if isinstance(cd, (list, tuple)) else cd)
+            break
+    return int(st.session_state.get(key, default)) % max(n_zones, 1)
+
+
+def zone_card(world, zi: int, run, weather, t_now: int, dr_hat_now: float, margin: float, plan=None):
+    """Seçili zonun ayrıntısı: bitki, sistem, toprak nemi, son sulama, son yağış, sensörler, kısa geçmiş."""
+    z = world.zones[zi]
+    soil = world.spec["soil"]
+    fc, wp = soil["theta_fc"]["mean"], soil["theta_wp"]["mean"]
+    taw = 1000 * (fc - wp) * z.zr_nominal
+    raw = z.p_nominal * taw
+    ratio = dr_hat_now / raw
+    cls = int(state_class(ratio, margin))
+    theta = fc - dr_hat_now / (1000 * z.zr_nominal)
+    left = max(0.0, 1 - dr_hat_now / taw)
+    dates = run.dates
+    st.markdown(
+        f"### {zone_name(z)} · {world.spec['vegetation'][z.veg]['label']}"
+        f"<br><span style='color:{STATE_COLORS[cls]}; font-weight:600'>● {STATE_LABELS[cls]}</span>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        f"{z.area_m2 / 10000:.2f} ha · {z.irrigation}, {z.application_rate_mm_h:g} mm/saat · "
+        f"kök derinliği ≈ {z.zr_nominal:.2f} m · Kc (yaz) {z.kc_nominal[1]:.2f} · {z.n_cells} hücre"
+    )
+    a, b = st.columns(2)
+    a.metric(
+        "Toprak nemi (ikiz)",
+        f"{theta:.3f} m³/m³",
+        help=f"İkizin kestirimi; tarla kapasitesi {fc:.2f}, solma noktası {wp:.2f} (nominal).",
+    )
+    b.metric(
+        "Kullanılabilir su",
+        f"%{100 * left:.0f}",
+        help=f"Kök bölgesinde {taw:.0f} mm kullanılabilir su var; stres eşiği {raw:.0f} mm açık.",
+    )
+
+    past_dose = run.dose_mm[:t_now, zi]
+    irr = np.flatnonzero(past_dose > 0.05)
+    if irr.size:
+        i = irr[-1]
+        last_irr = (
+            f"{dates[i]:%d %b} · {past_dose[i]:.1f} mm ({past_dose[i] / z.application_rate_mm_h * 60:.0f} dk)"
+        )
+    else:
+        last_irr = f"son {t_now} günde sulanmadı"
+    rain = weather["rain_mm"].to_numpy()[:t_now]
+    wet = np.flatnonzero(rain >= 1.0)
+    last_rain = f"{dates[wet[-1]]:%d %b} · {rain[wet[-1]]:.1f} mm" if wet.size else f"son {t_now} günde yok"
+    rain7 = float(rain[-7:].sum()) if t_now else 0.0
+    st.markdown(
+        f"- **Son sulama:** {last_irr}\n"
+        f"- **Son yağış (≥ 1 mm):** {last_rain} · son 7 gün toplam {rain7:.1f} mm\n"
+        f"- **Son 30 günde verilen su:** {past_dose[-30:].sum():.0f} mm · "
+        f"{past_dose[-30:].sum() * z.area_m2 / 1000:,.0f} m³"
+    )
+    st.caption(
+        f"Simülasyon {dates[0]:%d %b %Y} tarihinde toprak tarla kapasitesinde (dolu) başlar (varsayım); "
+        "ilk haftaların sulama geçmişi bu başlangıca bağlıdır."
+    )
+    if plan is not None:
+        zp = plan[plan["zone"] == z.zone_id]
+        today = zp.iloc[0]
+        st.markdown(
+            f"**Bugünkü öneri:** {today['minutes']:.0f} dk ({today['dose_mm']:.1f} mm, {today['water_m3']:,.0f} m³) · "
+            f"7 gün: {zp['minutes'].sum():.0f} dk, {zp['water_m3'].sum():,.0f} m³"
+        )
+
+    # sensörler (son okuma)
+    sids = [s for s in world.sensors if s.zone_index == zi]
+    if sids and t_now > 0:
+        last = run.sensors[run.sensors["time"] == dates[t_now - 1]].set_index("sensor_id")
+        rows = []
+        for s in sids:
+            r = last.loc[s.sensor.sensor_id] if s.sensor.sensor_id in last.index else None
+            rows.append(
+                {
+                    "sensör": s.sensor.sensor_id,
+                    "durum": FAULT_TEXT.get(s.sensor.fault.type, s.sensor.fault.type),
+                    f"okuma {dates[t_now - 1]:%d %b}": "veri yok"
+                    if r is None or np.isnan(r["theta_read"])
+                    else f"{r['theta_read']:.3f}",
+                }
+            )
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+
+    # kısa geçmiş: kullanılabilir su (ikiz) + sulama ve yağış
+    lo = max(0, t_now - 30)
+    hist_d = dates[lo:t_now]
+    fz = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.6, 0.4], vertical_spacing=0.06)
+    if t_now > lo:
+        fz.add_trace(
+            go.Scatter(
+                x=hist_d,
+                y=100 * (1 - run.dr_hat[lo:t_now, zi] / taw),
+                name="kullanılabilir su (ikiz)",
+                line=dict(color="#0969da", width=2.5),
+            ),
+            row=1,
+            col=1,
+        )
+        fz.add_trace(
+            go.Scatter(
+                x=hist_d,
+                y=100 * (1 - run.dr_zone_true[lo:t_now, zi] / taw),
+                name="sanal gerçek (zon ort., ikiz görmez)",
+                line=dict(color="#6e7781", width=1.5, dash="dot"),
+            ),
+            row=1,
+            col=1,
+        )
+        fz.add_trace(
+            go.Bar(x=hist_d, y=run.dose_mm[lo:t_now, zi], name="sulama (mm)", marker_color="#2fa58c"),
+            row=2,
+            col=1,
+        )
+        fz.add_trace(
+            go.Bar(x=hist_d, y=weather["rain_mm"].iloc[lo:t_now], name="yağış (mm)", marker_color="#9aa4ae"),
+            row=2,
+            col=1,
+        )
+    fz.add_hline(
+        y=100 * (1 - raw / taw),
+        line_dash="dash",
+        line_color=STATE_COLORS[3],
+        row=1,
+        col=1,
+        annotation_text="stres eşiği",
+        annotation_position="bottom left",
+    )
+    fz.update_yaxes(title_text="%", range=[0, 105], row=1, col=1)
+    fz.update_yaxes(title_text="mm", row=2, col=1)
+    fz.update_layout(
+        height=330,
+        margin=dict(l=0, r=0, t=10, b=0),
+        barmode="group",
+        legend=dict(orientation="h", y=-0.15),
+        hovermode="x unified",
+    )
+    st.plotly_chart(fz, width="stretch", key=f"zone_hist_{zi}_{t_now}")
+
+
+def weather_chart(recent: pd.DataFrame, today) -> go.Figure:
+    """Üstte yağış, altta ETo; gerçekleşen (gri) ve tahmin (mavi/turuncu) ayrı renk, tahmin alanı gölgeli."""
+    past = recent[~recent["is_forecast"]]
+    fc = recent[recent["is_forecast"]]
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.08,
+        row_heights=[0.55, 0.45],
+        subplot_titles=("Yağış (mm/gün)", "Buharlaşma ihtiyacı ETo (mm/gün)"),
+    )
+    fig.add_trace(
+        go.Bar(
+            x=past.index,
+            y=past["rain_mm"],
+            name="son günler (model analizi)",
+            marker_color="#9aa4ae",
+            hovertemplate="%{x|%d %b}: %{y:.1f} mm<extra>geçmiş</extra>",
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Bar(
+            x=fc.index,
+            y=fc["rain_mm"],
+            name="tahmin",
+            marker_color="#0969da",
+            text=[
+                f"{r:.1f} mm<br>%{p:.0f}" if r >= 0.1 else ""
+                for r, p in zip(fc["rain_mm"], fc["rain_prob_pct"])
+            ],
+            textposition="outside",
+            textfont=dict(size=12),
+            cliponaxis=False,
+            hovertemplate="%{x|%d %b}: %{y:.1f} mm, olasılık %{customdata:.0f}%<extra>tahmin</extra>",
+            customdata=fc["rain_prob_pct"],
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=past.index,
+            y=past["eto_mm"],
+            name="ETo geçmiş",
+            mode="lines+markers",
+            line=dict(color="#9aa4ae", width=2),
+            showlegend=False,
+            hovertemplate="%{x|%d %b}: %{y:.1f} mm<extra>geçmiş</extra>",
+        ),
+        row=2,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=fc.index,
+            y=fc["eto_mm"],
+            name="ETo tahmin",
+            mode="lines+markers",
+            line=dict(color="#cf6a00", width=2.5),
+            showlegend=False,
+            hovertemplate="%{x|%d %b}: %{y:.1f} mm<extra>tahmin</extra>",
+        ),
+        row=2,
+        col=1,
+    )
+    x0 = pd.Timestamp(today) - pd.Timedelta(hours=12)
+    x1 = recent.index.max() + pd.Timedelta(hours=12)
+    for r in (1, 2):
+        fig.add_vrect(
+            x0=x0,
+            x1=x1,
+            fillcolor="#0969da",
+            opacity=0.07,
+            line_width=0,
+            row=r,
+            col=1,
+            annotation_text="<b>TAHMİN</b>" if r == 1 else None,
+            annotation_position="top left",
+            annotation_font=dict(color="#0969da", size=12),
+        )
+    ymax = max(1.0, float(recent["rain_mm"].max()) * 1.35)
+    fig.update_yaxes(range=[0, ymax], row=1, col=1)
+    fig.update_yaxes(range=[0, max(1.0, float(recent["eto_mm"].max()) * 1.2)], row=2, col=1)
+    fig.update_xaxes(dtick=86400000 * 2, tickformat="%d %b", row=2, col=1)
+    fig.update_layout(
+        height=420,
+        margin=dict(l=0, r=0, t=40, b=0),
+        bargap=0.3,
+        legend=dict(orientation="h", y=1.12, x=1, xanchor="right"),
+        hovermode="x unified",
+    )
+    return fig
+
+
 @st.cache_resource(show_spinner="Sanal park üretiliyor…")
 def get_world(world_seed: int):
     spec = load_world_spec(SPEC_PATH)
@@ -83,18 +478,19 @@ def get_forecast(day_key: str):
 def get_plans(world_seed: int, day_key: str, margin: float, sensor_seed: int):
     world = get_world(world_seed)
     wx = get_forecast(day_key)
-    out = {}
+    out, runs = {}, {}
     for k in STRATEGIES:
-        _, plan = plan_from_forecast(world, wx, k, margin=margin, sensor_seed=sensor_seed)
-        out[k] = plan
-    return out, wx
+        run, plan = plan_from_forecast(world, wx, k, margin=margin, sensor_seed=sensor_seed)
+        run.twins = None  # önbelleğe alınmaz
+        out[k], runs[k] = plan, run
+    return out, wx, runs
 
 
 def render_forecast(world, shown: str, margin: float, sensor_seed: int, world_seed: int):
     """Bugün ve önümüzdeki 7 gün: tahmine dayalı sulama planı."""
     day_key = pd.Timestamp.now(tz="Europe/Istanbul").strftime("%Y-%m-%d")
     try:
-        plans, wx = get_plans(world_seed, day_key, margin, sensor_seed)
+        plans, wx, past_runs = get_plans(world_seed, day_key, margin, sensor_seed)
     except Exception as e:  # ağ hatası vb.
         st.error(f"Hava tahmini alınamadı: {e}")
         st.stop()
@@ -122,48 +518,13 @@ def render_forecast(world, shown: str, margin: float, sensor_seed: int, world_se
         )
 
     # hava: son 14 gün + tahmin
+    st.subheader("Hava: son 14 gün ve önümüzdeki 7 gün")
     recent = wx[wx.index >= pd.Timestamp(today) - pd.Timedelta(days=14)]
-    fw = make_subplots(specs=[[{"secondary_y": True}]])
-    past_mask = ~recent["is_forecast"]
-    fw.add_trace(
-        go.Bar(
-            x=recent.index[past_mask],
-            y=recent["rain_mm"][past_mask],
-            name="yağış (gerçekleşen)",
-            marker_color="#7aa6d6",
-        ),
-        secondary_y=False,
+    st.plotly_chart(weather_chart(recent, today), width="stretch")
+    st.caption(
+        "Gri: geçmiş günler (Open-Meteo model analizi; istasyon ölçümü değildir). Mavi/turuncu: bugünden itibaren "
+        "tahmin; çubuk üstünde yağış miktarı ve olasılığı. İkiz yağışı miktar × olasılık kadar hesaba katar."
     )
-    fc_rows = recent[recent["is_forecast"]]
-    fw.add_trace(
-        go.Bar(
-            x=fc_rows.index,
-            y=fc_rows["rain_mm"],
-            name="yağış tahmini (olasılık %)",
-            marker_color="#0969da",
-            text=[f"%{p:.0f}" for p in fc_rows["rain_prob_pct"]],
-            textposition="outside",
-            marker_opacity=[max(0.25, p / 100) for p in fc_rows["rain_prob_pct"]],
-        ),
-        secondary_y=False,
-    )
-    fw.add_trace(
-        go.Scatter(
-            x=recent.index,
-            y=recent["eto_mm"],
-            name="ETo (buharlaşma ihtiyacı)",
-            line=dict(color="#cf6a00", width=3),
-        ),
-        secondary_y=True,
-    )
-    fw.add_vline(x=pd.Timestamp(today), line_dash="dash", line_color="#57606a")
-    fw.add_annotation(x=pd.Timestamp(today), y=1.05, yref="paper", text="bugün", showarrow=False)
-    fw.update_yaxes(title_text="Yağış (mm)", secondary_y=False)
-    fw.update_yaxes(title_text="ETo (mm/gün)", secondary_y=True, showgrid=False)
-    fw.update_layout(
-        height=330, margin=dict(l=10, r=10, t=30, b=10), legend=dict(orientation="h", y=-0.2), bargap=0.25
-    )
-    st.plotly_chart(fw, width="stretch")
 
     # stratejilerin 7 günlük toplamları
     st.subheader("Önümüzdeki 7 günde verilecek su")
@@ -180,45 +541,48 @@ def render_forecast(world, shown: str, margin: float, sensor_seed: int, world_se
         "Plan her gün yeni tahminle yeniden hesaplanır."
     )
 
-    # bugünkü durum ve bugünkü karar haritası
-    st.subheader(f"Bugünkü durum ve karar · {STRATEGIES[shown][0]}")
+    # bugünkü durum haritası + tıklanınca zon ayrıntısı
+    st.subheader(f"Bugünkü toprak nemi ve karar · {STRATEGIES[shown][0]}")
+    st.caption("Haritada bir zona tıklayın: sağda bitkisi, toprak nemi, son sulama ve son yağış görünür.")
     today_rows = plan[plan["time"] == today].set_index("zone")
     ratio = np.array([today_rows.loc[z.zone_id, "deficit_ratio_today"] for z in world.zones])
-    fig = go.Figure()
-    fig.add_trace(
-        go.Heatmap(
-            x=world.x,
-            y=world.y,
-            z=np.clip(world.to_grid(ratio[world.zone_c]), 0, 2),
-            zmin=0,
-            zmax=2,
-            colorscale=STRESS_SCALE,
-            colorbar=dict(title="açık / eşik", tickvals=[0, 1, 2], ticktext=["dolu", "eşik", "ağır stres"]),
-            hovertemplate="ikizin kestirimi: %{z:.2f}<extra></extra>",
+    zone_text = [
+        f"<b>{zone_name(z)}</b> · {z.label}<br>{STATE_LABELS[int(state_class(ratio[zi], margin))]}"
+        f" (açık/eşik {ratio[zi]:.2f})<br>bugün: {today_rows.loc[z.zone_id, 'minutes']:.0f} dk {z.irrigation}"
+        for zi, z in enumerate(world.zones)
+    ]
+    key = "zone_fc"
+    default = int(np.argmax(ratio))
+    sel = int(st.session_state.get(key, default)) % len(world.zones)
+    c_map, c_card = st.columns([3, 2], gap="medium")
+    with c_map:
+        ev = st.plotly_chart(
+            state_map(world, ratio[world.zone_c], margin, zone_text, selected=sel),
+            width="stretch",
+            on_select="rerun",
+            selection_mode="points",
+            key="map_fc",
         )
-    )
-    for zi, z in enumerate(world.zones):
-        cells = world.cell_rc[world.zone_c == zi]
-        mins = today_rows.loc[z.zone_id, "minutes"]
-        fig.add_trace(
-            go.Scatter(
-                x=[world.x[cells[:, 1]].mean()],
-                y=[world.y[cells[:, 0]].mean()],
-                mode="text",
-                text=[f"{z.zone_id}<br>{mins:.0f} dk" if mins >= 0.5 else z.zone_id],
-                textfont=dict(size=10, color="#111"),
-                hoverinfo="skip",
-                showlegend=False,
-            )
+        new = pick_zone(ev, key, len(world.zones), default)
+        if new != sel:
+            st.rerun()
+    with c_card:
+        run_p = past_runs[shown]
+        t_now = len(run_p.dates)
+        zone_card(
+            world,
+            sel,
+            run_p,
+            wx[~wx["is_forecast"]],
+            t_now,
+            ratio[sel] * nominal_raw(world)[sel],
+            margin,
+            plan,
         )
-    add_boundary(fig, world)
-    add_sensors(fig, world, None)
-    fig.update_xaxes(visible=False)
-    fig.update_yaxes(visible=False, scaleanchor="x", constrain="domain")
-    fig.update_layout(height=520, margin=dict(l=10, r=10, t=10, b=10), plot_bgcolor="rgba(0,0,0,0)")
-    st.plotly_chart(fig, width="stretch")
     st.caption(
-        "Renk: ikizin sanal sensörlerden kestirdiği bugünkü toprak nemi. Etiket: bugün planlanan çalışma süresi."
+        "Renk ikizin zon başına kestirimidir (bugün sabah, sanal sensörler + son günlerin havası). Nemli: açık eşiğin "
+        f"yarısından az · Uygun: güvenlik payının ({margin:.2f}) altında · Sulama gerekli: pay ile eşik arası · "
+        "Stres: eşik aşıldı. Çizgiler zon sınırlarıdır."
     )
 
     # zon × gün planı
@@ -473,61 +837,53 @@ day = st.select_slider(
     value=min(100, len(dates) - 1),
     format_func=lambda i: dates[i].strftime("%d %b %Y"),
 )
-stress_true = world.to_grid(run.dr_true[day] / world.raw_c)
-hat_cells = run.dr_hat[day][world.zone_c]
-raw_nominal = np.array(
-    [
-        z.p_nominal
-        * 1000
-        * (world.spec["soil"]["theta_fc"]["mean"] - world.spec["soil"]["theta_wp"]["mean"])
-        * z.zr_nominal
-        for z in world.zones
-    ]
+raw_nominal = nominal_raw(world)
+view = st.radio(
+    "Haritada",
+    ["İkizin kestirimi (zon başına)", "Sanal gerçek (hücre başına, ikizden gizli)"],
+    horizontal=True,
 )
-stress_hat = world.to_grid(hat_cells / raw_nominal[world.zone_c])
-day_rows = run.sensors[run.sensors["time"] == dates[day]]
-
-f2 = make_subplots(
-    rows=1,
-    cols=2,
-    horizontal_spacing=0.03,
-    subplot_titles=(
-        "Gerçek toprak durumu (sanal dünya, ikizden gizli)",
-        f"İkizin kestirimi · {STRATEGIES[shown][0]}",
-    ),
+hat_ratio = run.dr_hat[day] / raw_nominal
+if view.startswith("İkiz"):
+    cell_ratio = hat_ratio[world.zone_c]
+else:
+    cell_ratio = run.dr_true[day] / world.raw_c
+true_zone = np.bincount(world.zone_c, weights=run.dr_true[day] / world.raw_c, minlength=len(world.zones)) / (
+    np.bincount(world.zone_c, minlength=len(world.zones))
 )
-for col, zgrid in ((1, stress_true), (2, stress_hat)):
-    f2.add_trace(
-        go.Heatmap(
-            x=world.x,
-            y=world.y,
-            z=np.clip(zgrid, 0, 2),
-            zmin=0,
-            zmax=2,
-            colorscale=STRESS_SCALE,
-            showscale=col == 2,
-            colorbar=dict(title="açık / eşik", tickvals=[0, 1, 2], ticktext=["dolu", "eşik", "ağır stres"]),
-            hovertemplate="açık/eşik: %{z:.2f}<extra></extra>",
-        ),
-        row=1,
-        col=col,
+stressed_zone = np.bincount(world.zone_c, weights=run.ks[day] < 0.999, minlength=len(world.zones)) / (
+    np.bincount(world.zone_c, minlength=len(world.zones))
+)
+zone_text = [
+    f"<b>{zone_name(z)}</b> · {z.label}<br>ikiz: {STATE_LABELS[int(state_class(hat_ratio[zi], margin))]}"
+    f" ({hat_ratio[zi]:.2f})<br>gerçek ort.: {true_zone[zi]:.2f} · stresli alan %{100 * stressed_zone[zi]:.0f}"
+    for zi, z in enumerate(world.zones)
+]
+key = "zone_past"
+default = int(np.argmax(stressed_zone))
+sel = int(st.session_state.get(key, default)) % len(world.zones)
+c_map, c_card = st.columns([3, 2], gap="medium")
+with c_map:
+    ev = st.plotly_chart(
+        state_map(world, cell_ratio, margin, zone_text, selected=sel),
+        width="stretch",
+        on_select="rerun",
+        selection_mode="points",
+        key="map_past",
     )
-    add_boundary(f2, world, row=1, col=col)
-    add_sensors(f2, world, day_rows, row=1, col=col)
-f2.update_xaxes(visible=False)
-f2.update_yaxes(visible=False)
-f2.update_yaxes(scaleanchor="x", constrain="domain", row=1, col=1)
-f2.update_yaxes(scaleanchor="x2", constrain="domain", row=1, col=2)
-f2.update_layout(height=520, margin=dict(l=10, r=10, t=40, b=10), plot_bgcolor="rgba(0,0,0,0)")
-st.plotly_chart(f2, width="stretch")
+    if pick_zone(ev, key, len(world.zones), default) != sel:
+        st.rerun()
+with c_card:
+    zone_card(world, sel, run, weather, day, float(run.dr_hat[day, sel]), margin)
 m1, m2, m3, m4 = st.columns(4)
 m1.metric("ETo / yağış", f"{weather['eto_mm'].iloc[day]:.1f} / {weather['rain_mm'].iloc[day]:.1f} mm")
 m2.metric("Strese giren alan", f"{100 * run.stressed_area_frac[day]:.0f} %")
 m3.metric("Bugün verilen su (tüm sistemler)", f"{run.water_m3[day]:,.0f} m³")
 m4.metric("Sezon başından beri", f"{run.water_m3[: day + 1].sum():,.0f} m³")
 st.caption(
-    "Renk: mavi = toprak dolu, sarı = stres eşiğine yakın, kırmızı = bitki susuz. Sol harita her hücrenin gerçek durumu; "
-    "sağ harita ikizin zon başına tek bir tahmini. İki harita arasındaki fark, ikizin hatasıdır."
+    "Haritada bir zona tıklayın. İkizin kestirimi zon başına tek değerdir; sanal gerçek her 10 m hücrenin durumudur. "
+    "İkisi arasındaki fark ikizin hatası ve zon içi farklılıktır. Zon kartındaki sensör okuması seçili günden önceki "
+    "günündür."
 )
 
 st.markdown(f"**{dates[day]:%d %B %Y} sulama kararı · {STRATEGIES[shown][0]}**")

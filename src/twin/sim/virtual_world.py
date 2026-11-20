@@ -32,6 +32,8 @@ M_PER_DEG_LAT = 110_574.0  # WGS84, 41° enlem civarı yaklaşık değer (yerel 
 M_PER_DEG_LON_EQUATOR = 111_320.0
 FIELD_SMOOTHING_M = 60.0  # mekânsal rastgele alanların ölçeği (sanal dünya varsayımı)
 VEG_KEYS = ["turf", "tree", "shrub", "flower"]
+# random: zon içinde rastgele hücre; critical: zonun en önce strese giren hücresi (keşifle bilindiği varsayılır)
+SENSOR_PLACEMENTS = ("random", "critical")
 
 
 def _stage_index(month: int) -> int:
@@ -227,11 +229,20 @@ def build_world(spec: dict, geojson_path: str | Path) -> World:
     probs = sspec["fault_probabilities"]
     fault_types = list(probs) + ["none"]
     fault_p = list(probs.values()) + [1.0 - sum(probs.values())]
+    placement = spec.get("sensor_placement", "random")
+    if placement not in SENSOR_PLACEMENTS:
+        raise ValueError(f"sensor_placement {placement!r}; seçenekler: {SENSOR_PLACEMENTS}")
+    taw_tmp = 1000.0 * (fc_c - wp_c) * zr_c
+    # kritiklik: yaz ortasında tarla kapasitesinden RAW'a kaç günde inildiği (küçük = önce strese girer)
+    days_to_raw = p_c * taw_tmp / np.maximum(kc_c[:, 1] * micro_c, 1e-9)
     sensors: List[WorldSensor] = []
     for zi, z in enumerate(zones):
         cells = np.flatnonzero(zone_c == zi)
         k = min(veg_spec[z.veg]["sensors_per_zone"], len(cells))
-        for j, cell in enumerate(rng.choice(cells, size=k, replace=False)):
+        chosen = rng.choice(cells, size=k, replace=False)  # rng her yerleşimde aynı tüketilir (arızalar eşleşir)
+        if placement == "critical":
+            chosen = cells[np.argsort(days_to_raw[cells], kind="stable")[:k]]
+        for j, cell in enumerate(chosen):
             ftype = str(rng.choice(fault_types, p=fault_p))
             fault = SensorFault(type=ftype)
             if ftype == "drift":
@@ -280,6 +291,11 @@ STRATEGIES: Dict[str, tuple] = {
     "SENSOR": ("İkiz: yalnız sensör", "jit", "sensor"),
     "ENKF": ("İkiz: model + sensör (EnKF)", "jit", "enkf"),
 }
+
+
+# Karşılaştırma ölçütü (ikiz değil): dünyanın gizli hücre durumunu ve bugünün gerçek havasını bilen,
+# zon başına tek doz veren kâhin. Verilen zon düzeninde stressiz sulamanın alt sınırını verir.
+BENCHMARKS: Dict[str, tuple] = {"ORACLE": ("Zon kâhini (alt sınır)", "oracle", None)}
 
 
 class ZoneTwin:
@@ -444,7 +460,7 @@ def run_world(
     """Dünyayı gün gün yürütür. `forecast` verilirse ikizler bugünün kararında tahmin edilen ETo ve
     yağışı (`eto_fc`, `rain_fc`) kullanır; verilmezse dünkü ETo ve sıfır yağış (kalıcılık)."""
     cfg = config or TwinConfig()
-    _, policy, estimator = STRATEGIES[strategy]
+    _, policy, estimator = {**STRATEGIES, **BENCHMARKS}[strategy]
     rng = np.random.default_rng(sensor_seed)
     twins = [
         ZoneTwin(z, world.spec, cfg, policy, estimator, margin, seed=sensor_seed * 1000 + i)
@@ -505,6 +521,13 @@ def run_world(
         eta = ks * stage_kc[:, _stage_index(date.month)] * float(w["eto_mm"])
         rain = float(w["rain_mm"])
         p_net = rain - max(0.0, rain - runoff)
+        if policy == "oracle":
+            # zondaki her hücrenin gün sonu açığı margin·RAW altında kalsın; doz en zorlu hücreye göre
+            need = np.maximum(dr + eta - p_net - margin * raw, 0.0)
+            zone_need = np.zeros(nz)
+            np.maximum.at(zone_need, world.zone_c, need)
+            out_dose[t] = np.clip(zone_need / eff_z, 0.0, twins[0].cap)
+            out_hat[t] = out_true[t]
         tmp = dr - p_net - (out_dose[t] * eff_z)[world.zone_c] + eta
         dp = np.maximum(0.0, -tmp)
         out_dr[t], out_ks[t] = dr, ks
@@ -590,7 +613,7 @@ def runtime_minutes(world: World, dose_mm: np.ndarray) -> np.ndarray:
 
 def summarize_run(run: WorldRun) -> Dict[str, float]:
     err = run.dr_hat - run.dr_zone_true
-    if STRATEGIES[run.strategy][2] is None:  # sabit takvim kestirim yapmaz
+    if {**STRATEGIES, **BENCHMARKS}[run.strategy][2] is None:  # sabit takvim ve kâhin kestirim yapmaz
         err = np.full_like(err, np.nan)
     return {
         "su_m3": float(run.water_m3.sum()),
