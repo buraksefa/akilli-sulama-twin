@@ -326,22 +326,38 @@ class ZoneTwin:
     def kc(self, month: int) -> float:
         return float(self.zone.kc_nominal[_stage_index(month)])
 
-    def _model_step(self, dr: float, eto: float, rain: float, month: int) -> float:
+    def _model_step(self, dr: float, eto: float, rain: float, month: int, dose: float) -> float:
         ks = 1.0 if dr <= self.raw else max(0.0, (self.taw - dr) / ((1.0 - self.p) * self.taw))
         p_net = rain - max(0.0, rain - self.runoff)
-        tmp = dr - p_net - self.zone.efficiency * self.last_dose + ks * self.kc(month) * eto
+        tmp = dr - p_net - self.zone.efficiency * dose + ks * self.kc(month) * eto
         return float(np.clip(tmp, 0.0, self.taw))
+
+    def _fixed_dose(self, day: int) -> float:
+        interval = int(self.cfg.irrigation.s0_interval_days.value)
+        return float(self.cfg.irrigation.s0_dose_mm.value) if day % interval == 0 else 0.0
+
+    def _jit_dose(self, dr: float, etc_mm: float, rain_mm: float) -> float:
+        """Gün sonu açığı hedefin (margin · RAW) altında tutacak brüt doz; rain_mm beklenen yağış."""
+        p_net = rain_mm - max(0.0, rain_mm - self.runoff)
+        need = dr + etc_mm - p_net - self.margin * self.raw
+        return float(np.clip(need / self.zone.efficiency, 0.0, self.cap)) if need > 0 else 0.0
 
     def decide(
         self, day: int, date: pd.Timestamp, yesterday: Optional[pd.Series], obs: Optional[float]
     ) -> float:
-        """Sabah kararı: dünün havası ve bugünkü sensör okuması → bugünkü brüt sulama önerisi [mm]."""
-        if self.policy == "fixed":
-            interval = int(self.cfg.irrigation.s0_interval_days.value)
-            dose = float(self.cfg.irrigation.s0_dose_mm.value) if day % interval == 0 else 0.0
-            self.last_dose = dose
-            return dose
+        """Sabah kararı: dünün havası ve bugünkü sensör okuması → bugünkü brüt sulama önerisi [mm].
 
+        Tahmin kullanılmaz: bugünün ETc'si dünkü gibi, yağış yok varsayılır (kalıcılık).
+        """
+        if self.policy == "fixed":
+            self.last_dose = self._fixed_dose(day)
+            return self.last_dose
+        eto_y = self.estimate(date, yesterday, obs)
+        self.last_dose = self._jit_dose(self.dr_hat, self.kc(date.month) * eto_y, 0.0)
+        return self.last_dose
+
+    def estimate(self, date: pd.Timestamp, yesterday: Optional[pd.Series], obs: Optional[float]) -> float:
+        """Sabah durum kestirimi (dünkü hava + dünkü doz + bugünkü sensör). Dünkü ETo'yu döndürür."""
         if yesterday is not None:
             eto_y, rain_y, month_y = (
                 float(yesterday["eto_mm"]),
@@ -353,12 +369,12 @@ class ZoneTwin:
 
         if self.estimator == "model":
             if yesterday is not None:
-                self.dr_hat = self._model_step(self.dr_hat, eto_y, rain_y, month_y)
+                self.dr_hat = self._model_step(self.dr_hat, eto_y, rain_y, month_y, self.last_dose)
         elif self.estimator == "sensor":
             if obs is not None:
                 self.dr_hat = float(np.clip(1000.0 * self.zr * (self.fc - obs), 0.0, self.taw))
             elif yesterday is not None:
-                self.dr_hat = self._model_step(self.dr_hat, eto_y, rain_y, month_y)
+                self.dr_hat = self._model_step(self.dr_hat, eto_y, rain_y, month_y, self.last_dose)
         elif self.estimator == "enkf":
             if yesterday is not None:
                 self.enkf.forecast_step(
@@ -369,11 +385,26 @@ class ZoneTwin:
                     irr_efficiency=self.zone.efficiency,
                 )
             self.dr_hat, _, _ = self.enkf.analysis_step(obs)
+        return eto_y
 
-        need = self.dr_hat + self.kc(date.month) * eto_y - self.margin * self.raw
-        dose = float(np.clip(need / self.zone.efficiency, 0.0, self.cap)) if need > 0 else 0.0
-        self.last_dose = dose
-        return dose
+    def plan(self, forecast: pd.DataFrame, first_day: int) -> List[tuple]:
+        """Tahmin günleri için (brüt doz, gün sonu tahmini açık) listesi.
+
+        Beklenen yağış = tahmin yağışı × yağış olasılığı (karar kuralı varsayımı). Kestirim bugünkü
+        sabah değerinden başlar ve ikizin nominal modeliyle ileri taşınır; gerçekleşme henüz bilinmez.
+        """
+        x = self.dr_hat
+        out = []
+        for k, (date, row) in enumerate(forecast.iterrows()):
+            rain_exp = float(row["rain_mm"]) * float(row.get("rain_prob_pct", 100.0)) / 100.0
+            etc = self.kc(date.month) * float(row["eto_mm"])
+            if self.policy == "fixed":
+                dose = self._fixed_dose(first_day + k)
+            else:
+                dose = self._jit_dose(x, etc, rain_exp)
+            x = self._model_step(x, float(row["eto_mm"]), rain_exp, date.month, dose)
+            out.append((dose, x))
+        return out
 
 
 @dataclass
@@ -390,6 +421,8 @@ class WorldRun:
     stressed_area_frac: np.ndarray  # (T,)
     sensors: pd.DataFrame
     source: str
+    dr_end: Optional[np.ndarray] = None  # (n,) son günün sonundaki gerçek tükenme
+    twins: Optional[list] = None
 
 
 def run_world(
@@ -481,7 +514,60 @@ def run_world(
         stressed_area_frac=stressed,
         sensors=pd.DataFrame(sensor_rows),
         source=weather.attrs.get("source", "unknown"),
+        dr_end=dr,
+        twins=twins,
     )
+
+
+def plan_from_forecast(
+    world: World,
+    weather: pd.DataFrame,
+    strategy: str,
+    margin: float = 0.9,
+    sensor_seed: int = 0,
+    config: Optional[TwinConfig] = None,
+) -> tuple:
+    """Geçmiş günlerle dünyayı ve ikizi bugüne getirir, bugünden itibaren tahminle sulama planı üretir.
+
+    `weather` içinde `is_forecast` sütunu olmalı (bkz. twin.data.forecast). Dönüş: (geçmiş koşu, plan tablosu).
+    """
+    past = weather[~weather["is_forecast"]].copy()
+    fc = weather[weather["is_forecast"]].copy()
+    past.attrs = dict(weather.attrs)
+    run = run_world(world, past, strategy, margin=margin, sensor_seed=sensor_seed, config=config)
+
+    # bugün sabah: sanal sensörler dünyanın son durumunu okur, ikiz kestirimini günceller
+    rng = np.random.default_rng(sensor_seed + 1)
+    theta = world.fc_c - run.dr_end / (1000.0 * world.zr_c)
+    first_day = len(past)
+    zone_obs: List[List[float]] = [[] for _ in world.zones]
+    for s in world.sensors:
+        r = s.sensor.read(float(theta[s.cell]), first_day, rng)
+        if not np.isnan(r):
+            zone_obs[s.zone_index].append(r)
+    rows = []
+    for zi, (z, tw) in enumerate(zip(world.zones, run.twins)):
+        if tw.policy != "fixed":
+            tw.estimate(fc.index[0], past.iloc[-1], float(np.mean(zone_obs[zi])) if zone_obs[zi] else None)
+        dr_today = tw.dr_hat
+        for (date, row), (dose, x_end) in zip(fc.iterrows(), tw.plan(fc, first_day)):
+            rows.append(
+                {
+                    "time": date,
+                    "zone": z.zone_id,
+                    "label": z.label,
+                    "system": z.irrigation,
+                    "dose_mm": dose,
+                    "minutes": dose / z.application_rate_mm_h * 60.0,
+                    "water_m3": dose * z.area_m2 / 1000.0,
+                    "deficit_ratio_end": x_end / tw.raw,
+                    "deficit_ratio_today": dr_today / tw.raw,
+                    "eto_mm": float(row["eto_mm"]),
+                    "rain_mm": float(row["rain_mm"]),
+                    "rain_prob_pct": float(row.get("rain_prob_pct", np.nan)),
+                }
+            )
+    return run, pd.DataFrame(rows)
 
 
 def runtime_minutes(world: World, dose_mm: np.ndarray) -> np.ndarray:

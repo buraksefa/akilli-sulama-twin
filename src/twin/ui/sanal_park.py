@@ -19,12 +19,15 @@ import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
+from twin.config import TwinConfig
+from twin.data.forecast import fetch_open_meteo_daily
 from twin.sim.engine import prepare_season_weather
 from twin.sim.virtual_world import (
     STRATEGIES,
     VEG_KEYS,
     build_world,
     load_world_spec,
+    plan_from_forecast,
     run_world,
     runtime_minutes,
     summarize_run,
@@ -68,6 +71,170 @@ def get_runs(world_seed: int, year: int, margin: float, sensor_seed: int):
     weather = prepare_season_weather(season_year=year, source="auto", park_id=world.spec["park_id"])
     runs = {k: run_world(world, weather, k, margin=margin, sensor_seed=sensor_seed) for k in STRATEGIES}
     return runs, weather
+
+
+@st.cache_data(ttl=3600, show_spinner="Hava tahmini alınıyor (Open-Meteo)…")
+def get_forecast(day_key: str):
+    era5 = TwinConfig().era5
+    return fetch_open_meteo_daily(float(era5.yildiz_lat.value), float(era5.yildiz_lon.value))
+
+
+@st.cache_data(ttl=3600, show_spinner="İkiz bugüne getiriliyor ve plan yapılıyor…")
+def get_plans(world_seed: int, day_key: str, margin: float, sensor_seed: int):
+    world = get_world(world_seed)
+    wx = get_forecast(day_key)
+    out = {}
+    for k in STRATEGIES:
+        _, plan = plan_from_forecast(world, wx, k, margin=margin, sensor_seed=sensor_seed)
+        out[k] = plan
+    return out, wx
+
+
+def render_forecast(world, shown: str, margin: float, sensor_seed: int, world_seed: int):
+    """Bugün ve önümüzdeki 7 gün: tahmine dayalı sulama planı."""
+    day_key = pd.Timestamp.now(tz="Europe/Istanbul").strftime("%Y-%m-%d")
+    try:
+        plans, wx = get_plans(world_seed, day_key, margin, sensor_seed)
+    except Exception as e:  # ağ hatası vb.
+        st.error(f"Hava tahmini alınamadı: {e}")
+        st.stop()
+    plan = plans[shown]
+    fc_days = sorted(plan["time"].unique())
+    today = fc_days[0]
+
+    st.title("Sulama planı: bugün ve önümüzdeki 7 gün")
+    st.markdown(
+        '<p class="lead">Son günlerin gerçekleşen havasıyla sanal park bugüne getirilir; ikiz sanal sensörlerden bugünkü '
+        "toprak nemini kestirir ve hava tahminine göre her zonun sulama sistemini kaç dakika çalıştıracağını planlar.</p>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        '<span class="tag">Tahmin: Open-Meteo (bugün + 6 gün)</span>'
+        '<span class="tag">Geçmiş 92 gün: Open-Meteo model analizi</span>'
+        f'<span class="tag">Model ızgara noktası: {wx.attrs.get("grid_latitude")}, {wx.attrs.get("grid_longitude")}</span>'
+        '<span class="tag">Park: sanal dünya</span>',
+        unsafe_allow_html=True,
+    )
+    if pd.Timestamp(today).month not in range(4, 11):
+        st.info(
+            "Şu an sulama dönemi (Nisan–Ekim) dışındayız. Plan yine hesaplanır; kış aylarında bitki katsayısı için "
+            "sezon sonu değerleri kullanılır (varsayım)."
+        )
+
+    # hava: son 14 gün + tahmin
+    recent = wx[wx.index >= pd.Timestamp(today) - pd.Timedelta(days=14)]
+    fw = make_subplots(specs=[[{"secondary_y": True}]])
+    past_mask = ~recent["is_forecast"]
+    fw.add_trace(
+        go.Bar(
+            x=recent.index[past_mask],
+            y=recent["rain_mm"][past_mask],
+            name="yağış (gerçekleşen)",
+            marker_color="#7aa6d6",
+        ),
+        secondary_y=False,
+    )
+    fc_rows = recent[recent["is_forecast"]]
+    fw.add_trace(
+        go.Bar(
+            x=fc_rows.index,
+            y=fc_rows["rain_mm"],
+            name="yağış tahmini (olasılık %)",
+            marker_color="#0969da",
+            text=[f"%{p:.0f}" for p in fc_rows["rain_prob_pct"]],
+            textposition="outside",
+            marker_opacity=[max(0.25, p / 100) for p in fc_rows["rain_prob_pct"]],
+        ),
+        secondary_y=False,
+    )
+    fw.add_trace(
+        go.Scatter(
+            x=recent.index,
+            y=recent["eto_mm"],
+            name="ETo (buharlaşma ihtiyacı)",
+            line=dict(color="#cf6a00", width=3),
+        ),
+        secondary_y=True,
+    )
+    fw.add_vline(x=pd.Timestamp(today), line_dash="dash", line_color="#57606a")
+    fw.add_annotation(x=pd.Timestamp(today), y=1.05, yref="paper", text="bugün", showarrow=False)
+    fw.update_yaxes(title_text="Yağış (mm)", secondary_y=False)
+    fw.update_yaxes(title_text="ETo (mm/gün)", secondary_y=True, showgrid=False)
+    fw.update_layout(
+        height=330, margin=dict(l=10, r=10, t=30, b=10), legend=dict(orientation="h", y=-0.2), bargap=0.25
+    )
+    st.plotly_chart(fw, width="stretch")
+
+    # stratejilerin 7 günlük toplamları
+    st.subheader("Önümüzdeki 7 günde verilecek su")
+    cols = st.columns(len(STRATEGIES))
+    for col, k in zip(cols, STRATEGIES):
+        col.markdown(
+            f'<div style="border-left:4px solid {STRAT_COLORS[k]}; padding-left:.6rem"><b>{STRATEGIES[k][0]}</b></div>',
+            unsafe_allow_html=True,
+        )
+        col.metric("7 gün", f"{plans[k]['water_m3'].sum():,.0f} m³")
+        col.metric("Bugün", f"{plans[k].loc[plans[k]['time'] == today, 'water_m3'].sum():,.0f} m³")
+    st.caption(
+        "İkizler tahmin edilen ETo'yu ve beklenen yağışı (miktar × olasılık) hesaba katar; sabit takvim tahmine bakmaz. "
+        "Plan her gün yeni tahminle yeniden hesaplanır."
+    )
+
+    # bugünkü durum ve bugünkü karar haritası
+    st.subheader(f"Bugünkü durum ve karar · {STRATEGIES[shown][0]}")
+    today_rows = plan[plan["time"] == today].set_index("zone")
+    ratio = np.array([today_rows.loc[z.zone_id, "deficit_ratio_today"] for z in world.zones])
+    fig = go.Figure()
+    fig.add_trace(
+        go.Heatmap(
+            x=world.x,
+            y=world.y,
+            z=np.clip(world.to_grid(ratio[world.zone_c]), 0, 2),
+            zmin=0,
+            zmax=2,
+            colorscale=STRESS_SCALE,
+            colorbar=dict(title="açık / eşik", tickvals=[0, 1, 2], ticktext=["dolu", "eşik", "ağır stres"]),
+            hovertemplate="ikizin kestirimi: %{z:.2f}<extra></extra>",
+        )
+    )
+    for zi, z in enumerate(world.zones):
+        cells = world.cell_rc[world.zone_c == zi]
+        mins = today_rows.loc[z.zone_id, "minutes"]
+        fig.add_trace(
+            go.Scatter(
+                x=[world.x[cells[:, 1]].mean()],
+                y=[world.y[cells[:, 0]].mean()],
+                mode="text",
+                text=[f"{z.zone_id}<br>{mins:.0f} dk" if mins >= 0.5 else z.zone_id],
+                textfont=dict(size=10, color="#111"),
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+    add_boundary(fig, world)
+    add_sensors(fig, world, None)
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False, scaleanchor="x", constrain="domain")
+    fig.update_layout(height=520, margin=dict(l=10, r=10, t=10, b=10), plot_bgcolor="rgba(0,0,0,0)")
+    st.plotly_chart(fig, width="stretch")
+    st.caption(
+        "Renk: ikizin sanal sensörlerden kestirdiği bugünkü toprak nemi. Etiket: bugün planlanan çalışma süresi."
+    )
+
+    # zon × gün planı
+    st.subheader("7 günlük plan: zon başına çalışma süresi (dakika)")
+    pv = plan.pivot_table(index=["zone", "label", "system"], columns="time", values="minutes").round(0)
+    pv.columns = [pd.Timestamp(c).strftime("%a %d %b") for c in pv.columns]
+    st.dataframe(
+        pv.reset_index().rename(columns={"zone": "zon", "label": "bitki", "system": "sistem"}),
+        width="stretch",
+        hide_index=True,
+    )
+    st.caption(
+        "Sanal parkta plan sistemlere uygulanır; gerçek parkta karar mekanizması yalnız öneri üretir ve onay gerektirir "
+        "(CLAUDE.md §2.3). Geçmiş sezonlarda bu kuralların ne kadar iyi karar verdiğini kenar çubuğundaki "
+        "'Geçmiş sezon testi' modunda görebilirsiniz."
+    )
 
 
 def add_boundary(fig, world, row=None, col=None):
@@ -120,8 +287,17 @@ st.set_page_config(page_title="Sanal Park · Sulama Dijital İkizi", page_icon="
 st.markdown(CSS, unsafe_allow_html=True)
 
 with st.sidebar:
+    st.subheader("Mod")
+    mode = st.radio(
+        "Mod",
+        ["Bugün ve 7 gün (tahmin)", "Geçmiş sezon testi (ERA5)"],
+        label_visibility="collapsed",
+        help="Tahmin modu: bugünden ileriye sulama planı. Test modu: kuralların geçmiş sezonlarda nasıl karar verdiği.",
+    )
     st.subheader("Simülasyon")
-    year = st.selectbox("Sulama dönemi (1 Nisan – 31 Ekim)", [2020, 2021, 2022, 2023, 2024], index=4)
+    year = 2024
+    if mode.startswith("Geçmiş"):
+        year = st.selectbox("Sulama dönemi (1 Nisan – 31 Ekim)", [2020, 2021, 2022, 2023, 2024], index=4)
     shown = st.selectbox(
         "Haritada gösterilen yönetim", list(STRATEGIES), index=3, format_func=lambda k: STRATEGIES[k][0]
     )
@@ -139,6 +315,9 @@ with st.sidebar:
     st.caption("Tohumu değiştirmek yeni bir rastgele park ya da yeni sensör gürültüsü üretir.")
 
 world = get_world(world_seed)
+if mode.startswith("Bugün"):
+    render_forecast(world, shown, margin, sensor_seed, world_seed)
+    st.stop()
 runs, weather = get_runs(world_seed, year, margin, sensor_seed)
 run = runs[shown]
 source = run.source
