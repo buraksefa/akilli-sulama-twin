@@ -31,3 +31,6 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .claude/
+
+# Yerel yedek
+CLAUDE.md.bak
