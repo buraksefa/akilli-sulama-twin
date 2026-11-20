@@ -81,3 +81,25 @@ def test_fixed_schedule_ignores_forecast(world):
     a = plan_from_forecast(world, _weather(fc_rain=30.0, fc_prob=100.0), "S0")[1]["water_m3"].sum()
     b = plan_from_forecast(world, _weather(fc_rain=0.0, fc_prob=0.0), "S0")[1]["water_m3"].sum()
     assert a == pytest.approx(b)
+
+
+def test_leading_missing_days_are_dropped_and_gaps_rejected():
+    """API'nin en eski günleri boş dönebilir: baştaki boşluk atılır, ortadaki boşluk hata verir."""
+    days = pd.date_range("2026-08-20", periods=6, freq="D")
+    eto = [None, None, 3.0, 4.0, 5.0, 4.0]
+    rain = [None, None, 0.0, 1.0, 0.0, 2.0]
+    df = parse_open_meteo_daily(_payload(days, eto, rain, [None] * 4 + [10, 20]), today=days[4].date())
+    assert df.index[0] == days[2] and df.attrs["dropped_leading_days"] == 2
+    assert df[["eto_mm", "rain_mm"]].notna().all().all()
+    with pytest.raises(ValueError):
+        parse_open_meteo_daily(
+            _payload(days, [3.0, None, 3.0, 4.0, 5.0, 4.0], [0.0] * 6, [None] * 4 + [10, 20]),
+            today=days[4].date(),
+        )
+
+
+def test_run_world_rejects_nan_weather(world):
+    wx = _weather()
+    wx.iloc[3, wx.columns.get_loc("eto_mm")] = np.nan
+    with pytest.raises(ValueError):
+        plan_from_forecast(world, wx, "MODEL")

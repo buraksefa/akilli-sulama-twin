@@ -37,6 +37,16 @@ def parse_open_meteo_daily(payload: dict, today: date) -> pd.DataFrame:
     df = df.astype({c: float for c in DAILY_FIELDS.values() if c in df.columns})
     if "rain_prob_pct" in df.columns:
         df.loc[~df["is_forecast"], "rain_prob_pct"] = 100.0  # gerçekleşmiş (analiz) yağış kesin kabul edilir
+    # API, past_days'in en eski günlerini boş döndürebiliyor (2026-11-20'de 92 günün ilk 19'u boştu).
+    # Baştaki boş günler atılır; ortada boşluk kalırsa simülasyon sessizce NaN üretmesin diye hata verilir.
+    core = [c for c in ("eto_mm", "rain_mm") if c in df.columns]
+    complete = df[core].notna().all(axis=1).to_numpy()
+    first = int(complete.argmax()) if complete.any() else len(df)
+    df = df.iloc[first:].copy()
+    if df.loc[~df["is_forecast"], core].isna().any().any():
+        missing = df.index[df[core].isna().any(axis=1) & ~df["is_forecast"]]
+        raise ValueError(f"Open-Meteo geçmiş verisinde boş günler var: {list(missing.date)}")
+    df.attrs["dropped_leading_days"] = first
     df.attrs["source"] = "open_meteo"
     df.attrs["grid_latitude"] = payload.get("latitude")
     df.attrs["grid_longitude"] = payload.get("longitude")

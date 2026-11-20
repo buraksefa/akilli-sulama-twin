@@ -26,6 +26,7 @@ from scipy.ndimage import gaussian_filter
 
 from twin.config import TwinConfig
 from twin.model.assimilation import EnsembleKalmanFilter
+from twin.qc.online import OnlineSensorQC
 from twin.sim.virtual_park import SensorFault, VirtualSensor
 
 M_PER_DEG_LAT = 110_574.0  # WGS84, 41° enlem civarı yaklaşık değer (yerel düzlem izdüşümü için yeterli)
@@ -239,7 +240,9 @@ def build_world(spec: dict, geojson_path: str | Path) -> World:
     for zi, z in enumerate(zones):
         cells = np.flatnonzero(zone_c == zi)
         k = min(veg_spec[z.veg]["sensors_per_zone"], len(cells))
-        chosen = rng.choice(cells, size=k, replace=False)  # rng her yerleşimde aynı tüketilir (arızalar eşleşir)
+        chosen = rng.choice(
+            cells, size=k, replace=False
+        )  # rng her yerleşimde aynı tüketilir (arızalar eşleşir)
         if placement == "critical":
             chosen = cells[np.argsort(days_to_raw[cells], kind="stable")[:k]]
         for j, cell in enumerate(chosen):
@@ -446,6 +449,8 @@ class WorldRun:
     source: str
     dr_end: Optional[np.ndarray] = None  # (n,) son günün sonundaki gerçek tükenme
     twins: Optional[list] = None
+    qc: Optional[list] = None  # sensör başına OnlineSensorQC (qc=True ise)
+    qc_enabled: bool = False
 
 
 def run_world(
@@ -456,11 +461,19 @@ def run_world(
     sensor_seed: int = 0,
     config: Optional[TwinConfig] = None,
     forecast: Optional[pd.DataFrame] = None,
+    qc: bool = False,
 ) -> WorldRun:
-    """Dünyayı gün gün yürütür. `forecast` verilirse ikizler bugünün kararında tahmin edilen ETo ve
+    """Dünyayı gün gün yürütür. `qc=True` ise her sensör okuması ikize ulaşmadan çevrimiçi kalite kontrolünden
+    geçer (twin.qc.online); reddedilen okuma kullanılmaz, zonda geçerli okuma kalmazsa ikiz modelle devam eder.
+
+    `forecast` verilirse ikizler bugünün kararında tahmin edilen ETo ve
     yağışı (`eto_fc`, `rain_fc`) kullanır; verilmezse dünkü ETo ve sıfır yağış (kalıcılık)."""
     cfg = config or TwinConfig()
     _, policy, estimator = {**STRATEGIES, **BENCHMARKS}[strategy]
+    if weather[["eto_mm", "rain_mm"]].isna().any().any():
+        raise ValueError(
+            "Hava verisinde boş (NaN) ETo/yağış var; dünya durumu bozulur. Önce boşlukları giderin."
+        )
     rng = np.random.default_rng(sensor_seed)
     twins = [
         ZoneTwin(z, world.spec, cfg, policy, estimator, margin, seed=sensor_seed * 1000 + i)
@@ -470,6 +483,11 @@ def run_world(
         tw.forecast = forecast
     for s in world.sensors:
         s.sensor._frozen = None
+    qcs = (
+        [OnlineSensorQC(float(world.spec["soil"]["theta_fc"]["mean"]), cfg.sensor_qc) for _ in world.sensors]
+        if qc
+        else None
+    )
 
     n, nz, t_len = len(world.veg_c), len(world.zones), len(weather)
     taw, raw, p = world.taw_c, world.raw_c, world.p_c
@@ -495,10 +513,21 @@ def run_world(
         w = weather.iloc[t]
         theta = world.fc_c - dr / (1000.0 * world.zr_c)
         zone_obs: List[List[float]] = [[] for _ in range(nz)]
-        for s in world.sensors:
+        if qcs is not None and t > 0:
+            # doygunluk: dünkü net su girdisi ikizin dün sabahki açık kestirimini tamponla aşıyor mu?
+            rain_y = float(weather["rain_mm"].iloc[t - 1])
+            input_y = rain_y - max(0.0, rain_y - runoff) + eff_z * out_dose[t - 1]
+            saturated_z = input_y >= out_hat[t - 1] + float(cfg.sensor_qc.saturation_buffer_mm.value)
+        else:
+            saturated_z = np.zeros(nz, dtype=bool)
+        for si, s in enumerate(world.sensors):
             r = s.sensor.read(float(theta[s.cell]), t, rng)
-            if not np.isnan(r):
-                zone_obs[s.zone_index].append(r)
+            reason = "ok" if not np.isnan(r) else "nodata"
+            used = None if np.isnan(r) else r
+            if qcs is not None:
+                used, reason = qcs[si].update(r, saturated=bool(saturated_z[s.zone_index]))
+            if used is not None:
+                zone_obs[s.zone_index].append(used)
             sensor_rows.append(
                 {
                     "time": date,
@@ -508,6 +537,8 @@ def run_world(
                     "theta_read": r,
                     "fault_type": s.sensor.fault.type,
                     "fault_active": s.sensor.is_faulty(t),
+                    "qc_reason": reason,
+                    "used": used is not None,
                 }
             )
         yesterday = weather.iloc[t - 1] if t > 0 else None
@@ -551,6 +582,8 @@ def run_world(
         source=weather.attrs.get("source", "unknown"),
         dr_end=dr,
         twins=twins,
+        qc=qcs,
+        qc_enabled=qc,
     )
 
 
@@ -561,6 +594,7 @@ def plan_from_forecast(
     margin: float = 0.9,
     sensor_seed: int = 0,
     config: Optional[TwinConfig] = None,
+    qc: bool = False,
 ) -> tuple:
     """Geçmiş günlerle dünyayı ve ikizi bugüne getirir, bugünden itibaren tahminle sulama planı üretir.
 
@@ -569,17 +603,20 @@ def plan_from_forecast(
     past = weather[~weather["is_forecast"]].copy()
     fc = weather[weather["is_forecast"]].copy()
     past.attrs = dict(weather.attrs)
-    run = run_world(world, past, strategy, margin=margin, sensor_seed=sensor_seed, config=config)
+    run = run_world(world, past, strategy, margin=margin, sensor_seed=sensor_seed, config=config, qc=qc)
 
     # bugün sabah: sanal sensörler dünyanın son durumunu okur, ikiz kestirimini günceller
     rng = np.random.default_rng(sensor_seed + 1)
     theta = world.fc_c - run.dr_end / (1000.0 * world.zr_c)
     first_day = len(past)
     zone_obs: List[List[float]] = [[] for _ in world.zones]
-    for s in world.sensors:
+    for si, s in enumerate(world.sensors):
         r = s.sensor.read(float(theta[s.cell]), first_day, rng)
-        if not np.isnan(r):
-            zone_obs[s.zone_index].append(r)
+        used = None if np.isnan(r) else r
+        if run.qc is not None:
+            used, _ = run.qc[si].update(r)
+        if used is not None:
+            zone_obs[s.zone_index].append(used)
     rows = []
     for zi, (z, tw) in enumerate(zip(world.zones, run.twins)):
         if tw.policy != "fixed":

@@ -41,16 +41,17 @@ def heterogeneity_experiment(
     sensor_strategies: Iterable[str] = ("SENSOR", "ENKF"),
     seeds: Iterable[int] = range(10),
     config: Optional[TwinConfig] = None,
+    qc_options: Iterable[bool] = (False,),
 ) -> pd.DataFrame:
     """Her zon düzeni × yerleşim × pay × strateji × tohum için bir satır.
 
     MODEL kestiricisi sensör görmez; yerleşimden ve tohumdan bağımsızdır, bu yüzden düzen ve pay başına bir kez
     koşulur. ORACLE düzen başına bir kez (margin 1,0) koşulur.
     """
-    seeds, margins, placements = list(seeds), list(margins), list(placements)
+    seeds, margins, placements, qc_options = list(seeds), list(margins), list(placements), list(qc_options)
     rows = []
 
-    def add(world, run, layout, placement, strategy, margin, seed):
+    def add(world, run, layout, placement, strategy, margin, seed, qc=False):
         rows.append(
             {
                 "zon_duzeni": f"{layout[0]}x{layout[1]}",
@@ -58,6 +59,7 @@ def heterogeneity_experiment(
                 "sensor_sayisi": len(world.sensors),
                 "yerlesim": placement,
                 "strateji": strategy,
+                "qc": qc,
                 "pay": margin,
                 "tohum": seed,
                 **summarize_run(run),
@@ -86,15 +88,18 @@ def heterogeneity_experiment(
             )
             for strat in sensor_strategies:
                 for m in margins:
-                    for seed in seeds:
-                        r = run_world(world, weather, strat, margin=m, sensor_seed=seed, config=config)
-                        add(world, r, layout, placement, strat, m, seed)
+                    for qc in qc_options:
+                        for seed in seeds:
+                            r = run_world(
+                                world, weather, strat, margin=m, sensor_seed=seed, config=config, qc=qc
+                            )
+                            add(world, r, layout, placement, strat, m, seed, qc)
     return pd.DataFrame(rows)
 
 
 def summarize_experiment(df: pd.DataFrame) -> pd.DataFrame:
     """Tohum ortalaması; su, aynı zon düzenindeki kâhine oranla da verilir."""
-    keys = ["zon_duzeni", "zon_sayisi", "sensor_sayisi", "yerlesim", "strateji", "pay"]
+    keys = ["zon_duzeni", "zon_sayisi", "sensor_sayisi", "yerlesim", "strateji", "qc", "pay"]
     g = (
         df.groupby(keys, sort=False)
         .agg(
@@ -112,3 +117,47 @@ def summarize_experiment(df: pd.DataFrame) -> pd.DataFrame:
     oracle = g[g["strateji"] == "ORACLE"].set_index("zon_duzeni")["su_m3"]
     g["su_kahine_orani"] = g["su_m3"] / g["zon_duzeni"].map(oracle)
     return g
+
+
+def qc_detection(
+    spec: dict,
+    geojson_path: str,
+    weather: pd.DataFrame,
+    zone_blocks_list: Iterable[Sequence[int]] = ((1, 1), (2, 2), (3, 3), (4, 4)),
+    placements: Iterable[str] = ("random", "critical"),
+    margins: Iterable[float] = (0.9, 0.3),
+    sensor_strategies: Iterable[str] = ("SENSOR", "ENKF"),
+    seeds: Iterable[int] = range(10),
+    config: Optional[TwinConfig] = None,
+) -> pd.DataFrame:
+    """QC açıkken her sensör-sezon için: gerçek arıza türü, yakalandı mı, ilk ret günü, arızanın başladığı gün."""
+    rows = []
+    for layout in zone_blocks_list:
+        for placement in placements:
+            world = build_world(world_variant(spec, layout, placement), geojson_path)
+            for strat in sensor_strategies:
+                for m in margins:
+                    for seed in seeds:
+                        sd = run_world(
+                            world, weather, strat, margin=m, sensor_seed=seed, config=config, qc=True
+                        ).sensors
+                        sd = sd.assign(day=sd.groupby("sensor_id").cumcount())
+                        for sid, g in sd.groupby("sensor_id"):
+                            rej = g[~g["qc_reason"].isin(["ok", "nodata"])]
+                            act = g[g["fault_active"]]
+                            rows.append(
+                                {
+                                    "zon_duzeni": f"{layout[0]}x{layout[1]}",
+                                    "yerlesim": placement,
+                                    "strateji": strat,
+                                    "pay": m,
+                                    "tohum": seed,
+                                    "sensor_id": sid,
+                                    "ariza": g["fault_type"].iloc[0],
+                                    "yakalandi": len(rej) > 0,
+                                    "ilk_ret_gunu": rej["day"].min() if len(rej) else float("nan"),
+                                    "ariza_baslangic_gunu": act["day"].min() if len(act) else float("nan"),
+                                    "ret_nedenleri": ",".join(sorted(set(rej["qc_reason"]))),
+                                }
+                            )
+    return pd.DataFrame(rows)

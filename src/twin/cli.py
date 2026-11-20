@@ -380,6 +380,7 @@ def heterogeneity(
     seeds: int = typer.Option(10, "--seeds", help="Sensör gürültüsü/arıza tohum sayısı"),
     out_dir: str = typer.Option("outputs/heterogeneity", "--out", help="CSV çıktı dizini"),
     no_faults: bool = typer.Option(False, "--no-faults", help="Sensör arızalarını kapat (yalnız gürültü)"),
+    with_qc: bool = typer.Option(False, "--with-qc", help="Sensörlü ikizleri QC'li ve QC'siz koş"),
 ):
     """Zon içi farklılık: güvenlik payı × sensör yerleşimi × zon boyutu (sanal Yıldız dünyası, ERA5 hava)."""
     import time
@@ -395,7 +396,13 @@ def heterogeneity(
     for year in [int(y) for y in years.split(",")]:
         weather = prepare_season_weather(season_year=year, source="era5", park_id="yildiz")
         t0 = time.perf_counter()
-        df = heterogeneity_experiment(spec, "data/public/parks.geojson", weather, seeds=range(seeds))
+        df = heterogeneity_experiment(
+            spec,
+            "data/public/parks.geojson",
+            weather,
+            seeds=range(seeds),
+            qc_options=(False, True) if with_qc else (False,),
+        )
         df.insert(0, "yil", year)
         df.insert(1, "sensor_arizasi", not no_faults)
         summ = summarize_experiment(df)
@@ -412,6 +419,7 @@ def heterogeneity(
             "sensor_sayisi",
             "yerlesim",
             "strateji",
+            "qc",
             "pay",
             "su_m3",
             "su_kahine_orani",
@@ -419,6 +427,37 @@ def heterogeneity(
             "stresli_alan_maks_pct",
         ]
         typer.echo(summ[cols].round(3).to_string(index=False))
+    typer.echo(f"✅ Kaydedildi: {out_path}")
+
+
+@app.command("qc-detection")
+def qc_detection_cmd(
+    years: str = typer.Option("2024", "--years", help="Virgülle ayrılmış sezonlar"),
+    seeds: int = typer.Option(10, "--seeds", help="Sensör tohum sayısı"),
+    out_dir: str = typer.Option("outputs/sensor_qc", "--out", help="CSV çıktı dizini"),
+):
+    """Çevrimiçi sensör QC'sinin arıza yakalama başarısı ve gecikmesi (sanal Yıldız dünyası, ERA5 hava)."""
+    import time
+
+    from twin.sim.heterogeneity import qc_detection
+    from twin.sim.virtual_world import load_world_spec
+
+    spec = load_world_spec("data/scenarios/yildiz_dunya.json")
+    out_path = Path(out_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+    for year in [int(y) for y in years.split(",")]:
+        weather = prepare_season_weather(season_year=year, source="era5", park_id="yildiz")
+        t0 = time.perf_counter()
+        df = qc_detection(spec, "data/public/parks.geojson", weather, seeds=range(seeds))
+        df.insert(0, "yil", year)
+        df["kaynak"] = f"synthetic_world+{weather.attrs.get('source')}"
+        df.to_csv(out_path / f"detection_{year}.csv", index=False)
+        df["gecikme"] = df["ilk_ret_gunu"] - df["ariza_baslangic_gunu"]
+        g = df.groupby("ariza").agg(
+            n=("ariza", "size"), yakalanan=("yakalandi", "mean"), gecikme_ortanca=("gecikme", "median")
+        )
+        typer.echo(f"{year}: {len(df)} sensör-sezon, {time.perf_counter() - t0:.1f} s")
+        typer.echo(g.round(3).to_string())
     typer.echo(f"✅ Kaydedildi: {out_path}")
 
 

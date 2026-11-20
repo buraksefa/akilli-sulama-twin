@@ -265,6 +265,124 @@ class AssimilationParameters:
 
 
 @dataclass
+class SensorQCParameters:
+    """Günlük sensör okumaları için çevrimiçi kalite kontrol eşikleri (sanal park ve ileride saha)."""
+
+    frozen_window_days: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=7,
+            unit="gün",
+            source=(
+                "Koçyiğit vd. (2025) SIMPaCT, arXiv:2508.11700: 120 saatlik pencere (saatlik veride ~120 örnek). "
+                "Günlük okumada 5 örnek gürültüyle rastlantısal olarak %1'in altına düşebildiği için 7 örneğe "
+                "uzatıldı (varsayım; sağlam sensörde yanlış alarm testte görüldü)"
+            ),
+            status=VerificationStatus.ASSUMPTION,
+            description="Donmuş değer penceresi (günlük okuma sayısı)",
+        )
+    )
+    frozen_max_variation_pct: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=1.0,
+            unit="%",
+            source="Koçyiğit vd. (2025) SIMPaCT: pencerede değişim < %1 ise takılı sensör",
+            status=VerificationStatus.VERIFIED,
+            description="Donmuş değer eşiği: (maks - min) / ortalama",
+        )
+    )
+    missing_rate_max: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=0.50,
+            unit="-",
+            source="Koçyiğit vd. (2025) SIMPaCT: eksik oranı > %50 ise geçersiz",
+            status=VerificationStatus.VERIFIED,
+            description="Değerlendirme penceresinde izin verilen en yüksek eksik okuma oranı",
+        )
+    )
+    missing_window_days: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=10,
+            unit="gün",
+            source="Varsayım: SIMPaCT pencere uzunluğunu günlük okuma için sabitlemez",
+            status=VerificationStatus.ASSUMPTION,
+            description="Eksik oranının hesaplandığı kayan pencere",
+        )
+    )
+    max_gap_days: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=3,
+            unit="gün",
+            source="Koçyiğit vd. (2025) SIMPaCT: 3 günü aşan kesinti",
+            status=VerificationStatus.VERIFIED,
+            description="Art arda bu kadar günden uzun okuma yoksa sensör kesintide sayılır",
+        )
+    )
+    vwc_min: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=0.0,
+            unit="m3/m3",
+            source="qc/rules.py fiziksel aralık (VWC 0,0-0,60)",
+            status=VerificationStatus.ASSUMPTION,
+            description="Fiziksel aralık alt sınırı",
+        )
+    )
+    vwc_max: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=0.60,
+            unit="m3/m3",
+            source="qc/rules.py fiziksel aralık (VWC 0,0-0,60)",
+            status=VerificationStatus.ASSUMPTION,
+            description="Fiziksel aralık üst sınırı",
+        )
+    )
+    above_fc_margin: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=0.05,
+            unit="m3/m3",
+            source=(
+                "Varsayım: toprak tarla kapasitesinin üstünde günlerce kalamaz (FAO-56 kova modeli fazlayı aynı gün "
+                "sızdırır); pay = sanal dünya θFC yayılımı 0,03 + sensör gürültüsü 0,02"
+            ),
+            status=VerificationStatus.ASSUMPTION,
+            description="Okuma nominal θFC + bu payı aşarsa 'tarla kapasitesi üstü' sayılır",
+        )
+    )
+    above_fc_days: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=3,
+            unit="gün",
+            source="Varsayım: yağış/sulama sonrası kısa süreli doygunluğu ayırmak için art arda gün sayısı",
+            status=VerificationStatus.ASSUMPTION,
+            description="Tarla kapasitesi üstü okumanın sensörü kalıcı olarak dışlaması için art arda gün sayısı",
+        )
+    )
+    saturation_margin: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=0.09,
+            unit="m3/m3",
+            source=(
+                "Varsayım: tek okumalık karar için pay = sanal dünya θFC yayılımı 0,03 + 3 × sensör gürültüsü 0,02 "
+                "(0,05 payında sağlam sensörde yanlış alarm testte görüldü)"
+            ),
+            status=VerificationStatus.ASSUMPTION,
+            description="Doygunluk sonrası okuma nominal θFC + bu payı aşarsa sensör dışlanır",
+        )
+    )
+    saturation_buffer_mm: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=5.0,
+            unit="mm",
+            source=(
+                "Varsayım: dünkü net su girdisi (yağış + η·sulama) ikizin kestirdiği açığı bu kadar aşarsa kök bölgesi "
+                "tarla kapasitesine gelmiş sayılır (doygunluk sonrası referans kontrolü)"
+            ),
+            status=VerificationStatus.ASSUMPTION,
+            description="Doygunluk sonrası referans kontrolü için açık üstü tampon",
+        )
+    )
+
+
+@dataclass
 class ERA5Parameters:
     """ECMWF ERA5-Land reanaliz indirme, ızgara ve dönüşüm parametreleri."""
 
@@ -413,6 +531,7 @@ class TwinConfig:
     crop: CropParameters = field(default_factory=CropParameters)
     irrigation: IrrigationSystemParameters = field(default_factory=IrrigationSystemParameters)
     assimilation: AssimilationParameters = field(default_factory=AssimilationParameters)
+    sensor_qc: SensorQCParameters = field(default_factory=SensorQCParameters)
     era5: ERA5Parameters = field(default_factory=ERA5Parameters)
     irrigated_fraction: ParameterItem = field(
         default_factory=lambda: ParameterItem(
@@ -444,6 +563,9 @@ class TwinConfig:
                 if hasattr(getattr(self.irrigation, k), "to_dict")
                 else getattr(self.irrigation, k)
                 for k in self.irrigation.__dataclass_fields__
+            },
+            "sensor_qc": {
+                k: getattr(self.sensor_qc, k).to_dict() for k in self.sensor_qc.__dataclass_fields__
             },
             "assimilation": {
                 k: getattr(self.assimilation, k).to_dict()

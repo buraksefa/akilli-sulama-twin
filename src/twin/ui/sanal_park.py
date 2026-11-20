@@ -21,6 +21,7 @@ from plotly.subplots import make_subplots
 
 from twin.config import TwinConfig
 from twin.data.forecast import fetch_open_meteo_daily
+from twin.qc.online import QC_REASONS
 from twin.sim.engine import prepare_season_weather
 from twin.sim.virtual_world import (
     STRATEGIES,
@@ -220,6 +221,7 @@ def pick_zone(event, key: str, n_zones: int, default: int) -> int:
 
 def zone_card(world, zi: int, run, weather, t_now: int, dr_hat_now: float, margin: float, plan=None):
     """Seçili zonun ayrıntısı: bitki, sistem, toprak nemi, son sulama, son yağış, sensörler, kısa geçmiş."""
+    qc_active = bool(getattr(run, "qc_enabled", False))
     z = world.zones[zi]
     soil = world.spec["soil"]
     fc, wp = soil["theta_fc"]["mean"], soil["theta_wp"]["mean"]
@@ -292,10 +294,13 @@ def zone_card(world, zi: int, run, weather, t_now: int, dr_hat_now: float, margi
             rows.append(
                 {
                     "sensör": s.sensor.sensor_id,
-                    "durum": FAULT_TEXT.get(s.sensor.fault.type, s.sensor.fault.type),
                     f"okuma {dates[t_now - 1]:%d %b}": "veri yok"
                     if r is None or np.isnan(r["theta_read"])
                     else f"{r['theta_read']:.3f}",
+                    "QC kararı": "kapalı"
+                    if r is None or "qc_reason" not in r or not qc_active
+                    else QC_REASONS.get(r["qc_reason"], r["qc_reason"]),
+                    "gerçek arıza (ikiz bilmez)": FAULT_TEXT.get(s.sensor.fault.type, s.sensor.fault.type),
                 }
             )
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
@@ -461,10 +466,14 @@ def get_world(world_seed: int):
 
 
 @st.cache_data(show_spinner="Sezon simüle ediliyor…")
-def get_runs(world_seed: int, year: int, margin: float, sensor_seed: int):
+def get_runs(world_seed: int, year: int, margin: float, sensor_seed: int, qc: bool = True):
     world = get_world(world_seed)
     weather = prepare_season_weather(season_year=year, source="auto", park_id=world.spec["park_id"])
-    runs = {k: run_world(world, weather, k, margin=margin, sensor_seed=sensor_seed) for k in STRATEGIES}
+    runs = {
+        k: run_world(world, weather, k, margin=margin, sensor_seed=sensor_seed, qc=qc) for k in STRATEGIES
+    }
+    for r in runs.values():
+        r.twins, r.qc = None, None  # önbelleğe alınmaz
     return runs, weather
 
 
@@ -475,22 +484,22 @@ def get_forecast(day_key: str):
 
 
 @st.cache_data(ttl=3600, show_spinner="İkiz bugüne getiriliyor ve plan yapılıyor…")
-def get_plans(world_seed: int, day_key: str, margin: float, sensor_seed: int):
+def get_plans(world_seed: int, day_key: str, margin: float, sensor_seed: int, qc: bool = True):
     world = get_world(world_seed)
     wx = get_forecast(day_key)
     out, runs = {}, {}
     for k in STRATEGIES:
-        run, plan = plan_from_forecast(world, wx, k, margin=margin, sensor_seed=sensor_seed)
-        run.twins = None  # önbelleğe alınmaz
+        run, plan = plan_from_forecast(world, wx, k, margin=margin, sensor_seed=sensor_seed, qc=qc)
+        run.twins, run.qc = None, None  # önbelleğe alınmaz
         out[k], runs[k] = plan, run
     return out, wx, runs
 
 
-def render_forecast(world, shown: str, margin: float, sensor_seed: int, world_seed: int):
+def render_forecast(world, shown: str, margin: float, sensor_seed: int, world_seed: int, qc: bool = True):
     """Bugün ve önümüzdeki 7 gün: tahmine dayalı sulama planı."""
     day_key = pd.Timestamp.now(tz="Europe/Istanbul").strftime("%Y-%m-%d")
     try:
-        plans, wx, past_runs = get_plans(world_seed, day_key, margin, sensor_seed)
+        plans, wx, past_runs = get_plans(world_seed, day_key, margin, sensor_seed, qc)
     except Exception as e:  # ağ hatası vb.
         st.error(f"Hava tahmini alınamadı: {e}")
         st.stop()
@@ -506,7 +515,7 @@ def render_forecast(world, shown: str, margin: float, sensor_seed: int, world_se
     )
     st.markdown(
         '<span class="tag">Tahmin: Open-Meteo (bugün + 6 gün)</span>'
-        '<span class="tag">Geçmiş 92 gün: Open-Meteo model analizi</span>'
+        f'<span class="tag">Geçmiş {int((~wx["is_forecast"]).sum())} gün: Open-Meteo model analizi</span>'
         f'<span class="tag">Model ızgara noktası: {wx.attrs.get("grid_latitude")}, {wx.attrs.get("grid_longitude")}</span>'
         '<span class="tag">Park: sanal dünya</span>',
         unsafe_allow_html=True,
@@ -673,6 +682,13 @@ with st.sidebar:
         0.05,
         help="İkiz, kestirdiği su açığını stres eşiğinin bu oranında tutmaya çalışır. Küçük değer = daha ıslak, daha güvenli.",
     )
+    qc_on = st.toggle(
+        "Sensör kalite kontrolü (QC)",
+        value=True,
+        help="Açıkken ikiz her okumayı kullanmadan önce denetler: fiziksel aralık, 3 günden uzun kesinti, eksik oranı, "
+        "donmuş değer (SIMPaCT) ve tarla kapasitesi üstü okuma. Reddedilen okuma kullanılmaz; zonda geçerli sensör "
+        "kalmazsa ikiz su dengesi modeliyle devam eder.",
+    )
     with st.expander("Rastgelelik"):
         world_seed = int(st.number_input("Sanal park tohumu (bitki/toprak dağılımı)", 0, 9999, 7))
         sensor_seed = int(st.number_input("Sensör gürültüsü tohumu", 0, 9999, 0))
@@ -680,9 +696,9 @@ with st.sidebar:
 
 world = get_world(world_seed)
 if mode.startswith("Bugün"):
-    render_forecast(world, shown, margin, sensor_seed, world_seed)
+    render_forecast(world, shown, margin, sensor_seed, world_seed, qc_on)
     st.stop()
-runs, weather = get_runs(world_seed, year, margin, sensor_seed)
+runs, weather = get_runs(world_seed, year, margin, sensor_seed, qc_on)
 run = runs[shown]
 source = run.source
 
