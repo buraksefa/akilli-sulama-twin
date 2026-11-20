@@ -67,7 +67,16 @@ def test_saturation_check_excludes_in_one_day_only_when_saturated():
     q2 = _qc()
     assert q2.update(0.38, saturated=True)[1] == "saturation_check"
     assert q2.update(0.25)[1] == "saturation_check"
-    assert set(QC_REASONS) >= {"ok", "nodata", "range", "gap", "missing", "frozen", "above_fc", "saturation_check"}
+    assert set(QC_REASONS) >= {
+        "ok",
+        "nodata",
+        "range",
+        "gap",
+        "missing",
+        "frozen",
+        "above_fc",
+        "saturation_check",
+    }
 
 
 @pytest.fixture(scope="module")
@@ -105,3 +114,33 @@ def test_qc_off_uses_every_reading(world):
     sd = run.sensors
     assert (sd["used"] == sd["theta_read"].notna()).all()
     assert run.qc is None
+
+
+@pytest.mark.parametrize("seed", range(5))
+def test_drift_rule_flags_linear_trend_against_model(seed):
+    """Okuma = model + sabit sapma + 0,001/gün kayma + gürültü → kayma testi yakalar; sabit sapma yakalanmaz."""
+    rng = np.random.default_rng(seed)
+    model = 0.20 + 0.02 * np.sin(np.arange(150) / 9.0)
+    q_drift, q_offset = _qc(), _qc()
+    r_drift, r_offset = [], []
+    for t, m in enumerate(model):
+        noise = rng.normal(0, 0.02)
+        r_drift.append(q_drift.update(m + 0.001 * t + noise, theta_model=m)[1])
+        r_offset.append(q_offset.update(m + 0.03 + noise, theta_model=m)[1])
+    assert "drift" in r_drift
+    first = r_drift.index("drift")
+    assert first >= int(TwinConfig().sensor_qc.drift_min_points.value) - 1
+    assert set(r_drift[first:]) == {"drift"}  # kalıcı dışlama
+    assert "drift" not in r_offset
+
+
+def test_drift_rule_skipped_without_model_reference():
+    q = _qc()
+    reasons = [q.update(0.15 + 0.002 * t, theta_model=None)[1] for t in range(60)]
+    assert "drift" not in reasons and np.isnan(q.drift_slope)
+
+
+def test_world_drift_test_toggle(world):
+    off = run_world(world, _weather(), "ENKF", qc=True, qc_drift=False).sensors
+    assert not (off["qc_reason"] == "drift").any()
+    assert {"theta_openloop", "drift_slope"} <= set(off.columns)

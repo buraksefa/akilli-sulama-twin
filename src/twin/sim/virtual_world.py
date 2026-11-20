@@ -462,9 +462,11 @@ def run_world(
     config: Optional[TwinConfig] = None,
     forecast: Optional[pd.DataFrame] = None,
     qc: bool = False,
+    qc_drift: bool = True,
 ) -> WorldRun:
     """Dünyayı gün gün yürütür. `qc=True` ise her sensör okuması ikize ulaşmadan çevrimiçi kalite kontrolünden
     geçer (twin.qc.online); reddedilen okuma kullanılmaz, zonda geçerli okuma kalmazsa ikiz modelle devam eder.
+    `qc_drift=True` iken QC, sensörü görmeyen açık döngü zon modeliyle tutarlılık (kayma) testini de uygular.
 
     `forecast` verilirse ikizler bugünün kararında tahmin edilen ETo ve
     yağışı (`eto_fc`, `rain_fc`) kullanır; verilmezse dünkü ETo ve sıfır yağış (kalıcılık)."""
@@ -507,6 +509,8 @@ def run_world(
     stressed = np.zeros(t_len)
     sensor_rows = []
     counts = np.bincount(world.zone_c, minlength=nz)
+    # kayma testi için açık döngü referansı: zon başına nominal model, uygulanan doz + gözlenen hava, sensör görmez
+    ol_dr = np.zeros(nz)
 
     for t in range(t_len):
         date = weather.index[t]
@@ -520,12 +524,27 @@ def run_world(
             saturated_z = input_y >= out_hat[t - 1] + float(cfg.sensor_qc.saturation_buffer_mm.value)
         else:
             saturated_z = np.zeros(nz, dtype=bool)
+        if t > 0:
+            y = weather.iloc[t - 1]
+            ol_dr = np.array(
+                [
+                    tw._model_step(
+                        ol_dr[zi], float(y["eto_mm"]), float(y["rain_mm"]), y.name.month, out_dose[t - 1, zi]
+                    )
+                    for zi, tw in enumerate(twins)
+                ]
+            )
+        theta_ol = np.array([tw.fc - ol_dr[zi] / (1000.0 * tw.zr) for zi, tw in enumerate(twins)])
         for si, s in enumerate(world.sensors):
             r = s.sensor.read(float(theta[s.cell]), t, rng)
             reason = "ok" if not np.isnan(r) else "nodata"
             used = None if np.isnan(r) else r
             if qcs is not None:
-                used, reason = qcs[si].update(r, saturated=bool(saturated_z[s.zone_index]))
+                used, reason = qcs[si].update(
+                    r,
+                    saturated=bool(saturated_z[s.zone_index]),
+                    theta_model=float(theta_ol[s.zone_index]) if qc_drift else None,
+                )
             if used is not None:
                 zone_obs[s.zone_index].append(used)
             sensor_rows.append(
@@ -539,6 +558,8 @@ def run_world(
                     "fault_active": s.sensor.is_faulty(t),
                     "qc_reason": reason,
                     "used": used is not None,
+                    "theta_openloop": float(theta_ol[s.zone_index]),
+                    "drift_slope": qcs[si].drift_slope if qcs is not None else float("nan"),
                 }
             )
         yesterday = weather.iloc[t - 1] if t > 0 else None

@@ -42,6 +42,7 @@ def heterogeneity_experiment(
     seeds: Iterable[int] = range(10),
     config: Optional[TwinConfig] = None,
     qc_options: Iterable[bool] = (False,),
+    qc_drift: bool = True,
 ) -> pd.DataFrame:
     """Her zon düzeni × yerleşim × pay × strateji × tohum için bir satır.
 
@@ -60,6 +61,7 @@ def heterogeneity_experiment(
                 "yerlesim": placement,
                 "strateji": strategy,
                 "qc": qc,
+                "kayma_testi": bool(qc and qc_drift),
                 "pay": margin,
                 "tohum": seed,
                 **summarize_run(run),
@@ -91,7 +93,14 @@ def heterogeneity_experiment(
                     for qc in qc_options:
                         for seed in seeds:
                             r = run_world(
-                                world, weather, strat, margin=m, sensor_seed=seed, config=config, qc=qc
+                                world,
+                                weather,
+                                strat,
+                                margin=m,
+                                sensor_seed=seed,
+                                config=config,
+                                qc=qc,
+                                qc_drift=qc_drift,
                             )
                             add(world, r, layout, placement, strat, m, seed, qc)
     return pd.DataFrame(rows)
@@ -100,6 +109,8 @@ def heterogeneity_experiment(
 def summarize_experiment(df: pd.DataFrame) -> pd.DataFrame:
     """Tohum ortalaması; su, aynı zon düzenindeki kâhine oranla da verilir."""
     keys = ["zon_duzeni", "zon_sayisi", "sensor_sayisi", "yerlesim", "strateji", "qc", "pay"]
+    if "kayma_testi" in df.columns:
+        keys.insert(6, "kayma_testi")
     g = (
         df.groupby(keys, sort=False)
         .agg(
@@ -129,6 +140,7 @@ def qc_detection(
     sensor_strategies: Iterable[str] = ("SENSOR", "ENKF"),
     seeds: Iterable[int] = range(10),
     config: Optional[TwinConfig] = None,
+    qc_drift: bool = True,
 ) -> pd.DataFrame:
     """QC açıkken her sensör-sezon için: gerçek arıza türü, yakalandı mı, ilk ret günü, arızanın başladığı gün."""
     rows = []
@@ -139,7 +151,14 @@ def qc_detection(
                 for m in margins:
                     for seed in seeds:
                         sd = run_world(
-                            world, weather, strat, margin=m, sensor_seed=seed, config=config, qc=True
+                            world,
+                            weather,
+                            strat,
+                            margin=m,
+                            sensor_seed=seed,
+                            config=config,
+                            qc=True,
+                            qc_drift=qc_drift,
                         ).sensors
                         sd = sd.assign(day=sd.groupby("sensor_id").cumcount())
                         for sid, g in sd.groupby("sensor_id"):
@@ -158,6 +177,14 @@ def qc_detection(
                                     "ilk_ret_gunu": rej["day"].min() if len(rej) else float("nan"),
                                     "ariza_baslangic_gunu": act["day"].min() if len(act) else float("nan"),
                                     "ret_nedenleri": ",".join(sorted(set(rej["qc_reason"]))),
+                                    "kayma_testi": qc_drift,
+                                    # sezon boyunca model-sensör farkı eğiminin en büyük mutlak değeri (kalibrasyon)
+                                    "maks_abs_egim": float(g["drift_slope"].abs().max()),
+                                    "ilk_kayma_ret_gunu": (
+                                        g.loc[g["qc_reason"] == "drift", "day"].min()
+                                        if (g["qc_reason"] == "drift").any()
+                                        else float("nan")
+                                    ),
                                 }
                             )
     return pd.DataFrame(rows)

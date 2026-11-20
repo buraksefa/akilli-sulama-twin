@@ -21,6 +21,11 @@ Kurallar (eşikler `TwinConfig.sensor_qc`, kaynak ve durum etiketli):
    tek günde kalıcı dışlanır. Kurak hücredeki kayan sensör, 5. kuralda yalnız çok büyük sapmada yakalanır;
    bu kural yağıştan sonraki ilk sabahı kalibrasyon anı olarak kullanır.
 
+7. **Model-sensör tutarlılığı / kayma** (varsayım): ikiz, sensörü hiç görmeyen bir açık döngü su dengesi modelini
+   (uygulanan dozlar ve gözlenen hava ile) yan yana yürütür. Okuma − model θ farkının son `drift_window_days`
+   gündeki EKK eğimi |eğim| > `drift_slope_max` ise sensör kalıcı dışlanır. Zon içi farklılık sabit ya da sınırlı
+   bir fark üretir; kayma ise doğrusal büyür. Test iki yönlüdür (kuru yöne kaymayı da hedefler).
+
 SIMPaCT'in sıçrama kuralı saatlik veri içindir. Günlük okumada yağış ve sulama gerçek sıçramalar ürettiği için
 burada kullanılmadı.
 """
@@ -42,6 +47,7 @@ QC_REASONS = {
     "frozen": "donmuş değer (7 gün, < %1 değişim)",
     "above_fc": "tarla kapasitesi üstü (kalıcı dışlandı)",
     "saturation_check": "doygunluk sonrası okuma tarla kapasitesinin üstünde (kalıcı dışlandı)",
+    "drift": "model-sensör farkında eğilim / kayma (kalıcı dışlandı)",
 }
 
 
@@ -57,18 +63,27 @@ class OnlineSensorQC:
     excluded: bool = False
     exclusion_reason: str = ""
     last_reason: str = "ok"
+    day: int = 0
+    residuals: Deque[Tuple[int, float]] = field(default_factory=deque)
+    drift_slope: float = float("nan")
 
     def __post_init__(self):
         n = max(int(self.params.missing_window_days.value), int(self.params.frozen_window_days.value))
         self.history = deque(maxlen=n)
+        self.residuals = deque()
 
-    def update(self, reading: float, saturated: bool = False) -> Tuple[Optional[float], str]:
+    def update(
+        self, reading: float, saturated: bool = False, theta_model: Optional[float] = None
+    ) -> Tuple[Optional[float], str]:
         """Okumayı geçmişe ekler; (kabul edilen değer ya da None, neden kodu) döndürür.
 
         `saturated`: ikize göre kök bölgesi dün yeterince su aldı ve bu sabah tarla kapasitesinde olmalı.
+        `theta_model`: sensörü görmeyen açık döngü modelinin bu sabahki θ kestirimi (kayma testi; None ise atlanır).
         """
         p = self.params
         value = float(reading) if reading is not None else float("nan")
+        self._update_drift(value, theta_model)
+        self.day += 1
         if np.isfinite(value) and not (p.vwc_min.value <= value <= p.vwc_max.value):
             self.history.append(float("nan"))
             self.gap_days += 1
@@ -88,6 +103,9 @@ class OnlineSensorQC:
                 return self._result(None, "above_fc")
         elif np.isfinite(value):
             self.above_fc_run = 0
+        if np.isfinite(self.drift_slope) and abs(self.drift_slope) > p.drift_slope_max.value:
+            self.excluded, self.exclusion_reason = True, "drift"
+            return self._result(None, "drift")
 
         if self.gap_days > int(p.max_gap_days.value):
             return self._result(None, "gap")
@@ -107,6 +125,21 @@ class OnlineSensorQC:
             if spread < p.frozen_max_variation_pct.value:
                 return self._result(None, "frozen")
         return self._result(value, "ok")
+
+    def _update_drift(self, value: float, theta_model: Optional[float]) -> None:
+        """Okuma − model farkını pencereye ekler ve EKK eğimini günceller (yeterli okuma yoksa NaN)."""
+        p = self.params
+        win = int(p.drift_window_days.value)
+        if theta_model is not None and np.isfinite(value) and p.vwc_min.value <= value <= p.vwc_max.value:
+            self.residuals.append((self.day, value - float(theta_model)))
+        while self.residuals and self.residuals[0][0] <= self.day - win:
+            self.residuals.popleft()
+        if len(self.residuals) < int(p.drift_min_points.value):
+            self.drift_slope = float("nan")
+            return
+        tt, rr = np.array(self.residuals, dtype=float).T
+        tc = tt - tt.mean()
+        self.drift_slope = float(np.dot(tc, rr - rr.mean()) / np.dot(tc, tc))
 
     def _result(self, value: Optional[float], reason: str) -> Tuple[Optional[float], str]:
         self.last_reason = reason

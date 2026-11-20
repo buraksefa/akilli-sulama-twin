@@ -37,6 +37,7 @@ okumaları görür. Bu yüzden aynı kurallar günlük okumaya uyarlandı ve çe
 | 4 | Donmuş değer | 7 okumada (maks−min)/ort < %1 | SIMPaCT %1 (verified); pencere 7 gün (varsayım) | değer değişince geri döner |
 | 5 | Tarla kapasitesi üstü | okuma > θFC_nom + 0,05, art arda 3 gün | varsayım (fiziksel) | sensör kalıcı dışlanır |
 | 6 | Doygunluk sonrası referans | dünkü net girdi ≥ ikizin açığı + 5 mm iken okuma > θFC_nom + 0,09 | varsayım (fiziksel) | sensör kalıcı dışlanır |
+| 7 | Model–sensör tutarlılığı (kayma) | okuma − açık döngü model farkının 90 günlük EKK eğimi, mutlak değerce > 0,0009 m³/m³/gün (en az 45 okuma) | varsayım; eşik kalibre edildi (§8) | sensör kalıcı dışlanır |
 
 Reddedilen okuma ikize ulaşmaz. Zonda geçerli okuma kalmazsa ikiz su dengesi modeliyle devam eder. Bu, `qc/virtual_sensor.py`'deki model tabanlı yedek sanal sensörün karşılığıdır.
 
@@ -113,7 +114,9 @@ Tam tablo `qc_vs_noqc_vs_faultless.csv` dosyasında. Tüm 64 sensörlü ayarda k
   Bu sanal dünyada QC'li sensörler, sensörsüz modele karşı stresi en fazla 0,6 puan düşürüyor ve bunu daha çok
   suyla yapıyor.
 
-## 5. Sonuç (RQ1 için)
+> §3–§4 kural 1–6 içindir (kayma testi yokken). Kural 7'nin eklenmesiyle değişen sonuçlar §8'dedir.
+
+## 5. Sonuç (RQ1 için, kural 1–6)
 
 1. SIMPaCT kuralları günlük okumaya uyarlanınca donmuş sensörü 6 günde ve yanlış alarmsız yakalıyor.
 2. **Kayan sensör asıl sorun.** Yavaş kayma, aralık ve donma kurallarına görünmüyor. Fiziksel tutarlılık kuralları
@@ -121,10 +124,9 @@ Tam tablo `qc_vs_noqc_vs_faultless.csv` dosyasında. Tüm 64 sensörlü ayarda k
 3. QC, arızanın karara etkisinin ortalama üçte birini geri alıyor. Kalan kısım kaymanın geç fark edilmesinden
    geliyor. Tezde "QC yetmez, kaymaya özgü yöntem gerekir" diye raporlanmalı.
 
-**Önerilen sonraki adımlar (henüz yapılmadı):**
+**Önerilen sonraki adımlar:**
 
-- **Model–sensör tutarlılık testi:** EnKF yeniliklerinin (innovation) kayan ortalamasında sistematik eğilim aramak.
-  Zon içi farklılığın yarattığı sabit farkı kaymadan ayırmak gerekecek.
+- **Model–sensör tutarlılık testi:** yapıldı, bkz. §8.
 - **Planlı referans sulaması:** birkaç haftada bir bir zonu tarla kapasitesine kadar sulayıp kural 6'ya kalibrasyon
   anı yaratmak. Ek su maliyeti ölçülmeli.
 - **Sahada:** iki sensörlü zon ya da periyodik elle kalibrasyon. Maliyet karşılaştırması yapılmalı.
@@ -146,3 +148,135 @@ için şunları gösterir:
   (ZON_ICI_FARKLILIK §7).
 - θFC_nominal, ikizin bildiği tek değerdir (0,28). Sahada sensör konumunda ölçülürse kural 5 ve 6 daha dar payla
   ve daha erken çalışabilir.
+
+## 8. Model–sensör tutarlılık testi (kural 7, kayma)
+
+Durum: 2026-11-21. Kod: `OnlineSensorQC._update_drift` (`src/twin/qc/online.py`); açık döngü referansı
+`run_world` içinde (`theta_openloop` sütunu); eşikler `TwinConfig.sensor_qc.drift_*`. Testler:
+`tests/test_sensor_qc_online.py` (doğrusal kayma yakalanır, sabit sapma yakalanmaz, referans yoksa test atlanır).
+
+### 8.1 Fikir
+
+EnKF yeniliği (innovation) kaymayı göremez: ikiz sensörü özümsediği için önsel kestirim de sensörle birlikte kayar.
+Bu yüzden ikiz, zon başına **sensörü hiç görmeyen bir açık döngü su dengesi modeli** yürütür. Model nominal
+parametrelerle, uygulanan dozlar ve gözlenen havayla ilerler. Her sensör için şu fark izlenir:
+
+```
+r_t = θ_okuma,t − θ_açık döngü,t
+```
+
+- Zon içi farklılıkta θFC farkı **sabit** bir r üretir. Kc·mikroklima ya da Zr farkı ise sınırlı bir eğilim üretir:
+  hücre tarla kapasitesine ya da strese dayanınca durur.
+- Kayma ise **doğrusal ve sınırsız** büyür.
+
+Test, r'nin son 90 gündeki EKK eğimine bakar. Eğim mutlak değerce eşiği aşarsa sensör kalıcı olarak dışlanır.
+Test iki yönlüdür, ama kuru yöne kayma denenmedi.
+
+### 8.2 İstatistik seçimi ve eşik kalibrasyonu
+
+Betikler `tools/drift_calibration/` altında. Tablo `outputs/sensor_qc_drift/statistic_comparison.csv` dosyasında.
+
+- **Koşu altkümesi:** 4 zon düzeni × 2 strateji × 4 tohum, pay 0,7, 4.440 sensör-sezon. Kayma testi kapalıydı.
+- **Eşik:** 2020–2021'deki sağlam sensörlerin sezon içi en büyük |istatistik| değerinin %99 (ya da %100) dilimi.
+- **Değerlendirme:** bağımsız olarak 2022–2024'te.
+
+| İstatistik | Pencere | Eşik dilimi | Eşik | Yanlış alarm (2022–24) | Kayma yakalama | Gecikme ortanca / %90 (gün) |
+|---|---|---|---|---|---|---|
+| EKK eğimi | 60 | %99 | 0,00111 | %4,0 | %100 | 60 / 106 |
+| EKK eğimi | 60 | %100 | 0,00154 | %0 | %20 | 112 / 156 |
+| **EKK eğimi** | **90** | **%99** | **0,00090** | **%0,5** | **%100** | **44 / 76** |
+| EKK eğimi | 90 | %100 | 0,00134 | %0 | %23 | 64 / 143 |
+| Theil–Sen | 60 | %99 | 0,00115 | %4,0 | %99,7 | 70 / 121 |
+| EKK + birikimli ETc ortak değişkeni | 60 | %99 | 0,0254 | %2,5 | %1,7 | 117 / 125 |
+| EKK + birikimli ETc ortak değişkeni | 90 | %99 | 0,0096 | %15,7 | %13,9 | 143 / 149 |
+| EKK + birikimli ETc ve girdi ortak değişkenleri | 90 | %99 | 0,0128 | %11,8 | %12,7 | 123 / 146 |
+
+- **ET ortak değişkeni işe yaramadı.** Birikimli ETc pencere içinde zamanla neredeyse doğrusal ilerliyor; bu yüzden
+  kayma ile Kc farkı istatistiksel olarak ayrılamıyor (eşdoğrusallık). Tek sensörle bu ikisi temelde
+  birbirine karışır; 90 günlük pencere, farklılığın sınırlı olmasından yararlanarak ayrımı sağlıyor.
+- **Seçim:** 90 gün, EKK eğimi, eşik 0,0009 (`assumption`, sanal dünyaya özgü).
+- **İlk deneme:** 60 gün ve 0,0007 eşiğiyle yapıldı. Sentetik test havasında (ETo 4–7 mm, 90 gün) sağlam çalı
+  sensörlerini dışladı. Bu sensörlerin Kc'si nominalden ~%13 düşüktü. Kalibrasyon bu yüzden gerekti.
+
+### 8.3 Yakalama başarısı (tam deney, 5 yıl, 44.400 sensör-sezon)
+
+`twin qc-detection --years Y --out outputs/sensor_qc_drift`: yıl başına 446–447 s (10 paralel süreç).
+
+| Gerçek arıza | Sensör-sezon | Yakalanan | Gecikme ortancası (gün) | Gecikme %90 (gün) | Kural 1–6 ile gecikme ortancası (§3) |
+|---|---|---|---|---|---|
+| Sağlam | 25.200 | **125 (%0,50)** yanlış alarm | – | – | 0 yanlış alarm |
+| Donma | 5.600 | %100 | 6 | 6 | 6 |
+| Kayma | 9.600 | %100 | **44** | **82** | 134 / 179 |
+| Veri kaybı | 4.000 | %36 | 125 | 180 | 126 |
+
+- **Kaymanın %93'ü kural 7 ile yakalandı.** Gecikme ortancası 44 gün; bu, en az 45 okuma koşulunun izin verdiği
+  en erken gündür.
+- **Bedel: sağlam sensörde %0,5 yanlış alarm.** Yıllara göre: 2020 %0,36, 2021 %1,15, 2022 %0,46, 2023 %0,06,
+  2024 %0,46. Kalibrasyon yılı 2021'de oran en yüksek. Kalibrasyonda sezon içi en büyük değerin %99 dilimi
+  alındığı için bu beklenen bir sonuç.
+
+### 8.4 Karara etkisi (ENKF, 5 yılın ortalaması)
+
+`twin heterogeneity --with-qc --years Y --out outputs/sensor_qc_drift`: yıl başına 1.300 koşu, 1.174–1.193 s
+(10 paralel süreç). Tam tablo `outputs/sensor_qc_drift/qc_drift_comparison.csv` dosyasında. QC'siz satırlar §4'teki
+koşularla birebir aynı (fark 0).
+
+| Zon | Yerleşim | Pay | Stres: QC'siz / QC 1–6 / QC 1–7 / arızasız (%) | Su: QC 1–7 / arızasız (m³) |
+|---|---|---|---|---|
+| 1×1 | kritik | 0,7 | 8,4 / 7,8 / **3,1** / 0,05 | 199.466 / 207.224 |
+| 2×2 | kritik | 0,7 | 8,8 / 7,3 / **1,6** / 0,09 | 187.987 / 191.056 |
+| 2×2 | rastgele | 0,3 | 8,6 / 3,6 / **1,0** / 0,84 | 192.533 / 192.253 |
+| 3×3 | kritik | 0,7 | 15,2 / 8,2 / **2,9** / 0,53 | 182.358 / 186.284 |
+| 4×4 | kritik | 0,5 | 18,5 / 11,4 / **2,7** / 0,10 | 185.884 / 190.007 |
+| 4×4 | rastgele | 0,5 | 20,3 / 12,0 / **3,0** / 2,63 | 177.994 / 175.667 |
+
+Tüm 64 sensörlü ayarda kapanan pay (§4 tanımı):
+
+| Ölçüt | QC 1–6 | QC 1–7 |
+|---|---|---|
+| Ortalama | 0,37 | **0,84** |
+| Ortanca | 0,36 | 0,83 |
+| En küçük | 0,04 | 0,35 |
+| En büyük | 1,02 | 1,44 |
+
+- **Kapanan pay 1'i aşabiliyor.** Bu, rastgele yerleşimde (3×3, 4×4) QC'li stresin arızasız sensörden bile düşük
+  olduğu anlamına geliyor. Nedeni şu: kural 7, Kc'si nominalden düşük, yani zondan daha ıslak kalan **sağlam ama
+  temsil gücü zayıf** sensörleri de dışlıyor (%0,5 yanlış alarm). Ardından ikiz modele düşüyor ve daha çok suluyor
+  (örneğin 3×3 rastgele, pay 0,7: 165.437 m³'e karşı arızasız 161.445 m³). Bu kazanç arıza yakalamadan değil,
+  temsil gücü zayıf sensörü elemekten geliyor.
+
+### 8.5 Sensörsüz modelle karşılaştırma
+
+§4'teki sonuç tersine döndü: kayma testiyle QC'li sensörlü ikiz, sensörsüz modeli geçiyor.
+
+| Ayar | Su (m³) | Stres (%) | Yıllara göre stres (%), 2020–2024 |
+|---|---|---|---|
+| Sensörsüz MODEL, pay 0,3 | 185.389 | 3,7 | 5,8 / 2,3 / 3,7 / 3,0 / 3,7 |
+| 2×2 kritik ENKF + QC 1–7, pay 0,7 | 187.987 (+%1,4) | **1,6** | 2,9 / 1,0 / 2,2 / 0,9 / 1,1 |
+| 4×4 kritik ENKF + QC 1–7, pay 0,5 | 185.884 (+%0,3) | **2,7** | 3,8 / 1,9 / 3,3 / 2,2 / 2,4 |
+| 4×4 rastgele ENKF + QC 1–7, pay 0,5 | 177.994 (−%4,0) | **3,0** | 4,7 / 1,7 / 3,5 / 2,3 / 2,5 |
+
+- Yaklaşık aynı suyla stres 3,7'den 1,6'ya iniyor. 2×2 kritik ENKF, pay 0,7 ayarı **beş yılın her birinde**
+  sensörsüz modelden daha az stres veriyor. Sezonluk su farkı −%1,8 ile +%3,6 arasında.
+- Kalibrasyonla değerlendirme ayrılsa da (2020–21 / 2022–24) bulgu yönü her iki dönemde aynı.
+
+### 8.6 Sonuç (RQ1 güncellemesi)
+
+1. SIMPaCT kuralları donmayı yakalıyor, ama kaymaya karşı yetersiz. Kayma, açık döngü modelle tutarlılık testiyle
+   ortanca 44 günde yakalanıyor (önce 134 gün).
+2. Bunun bedeli sağlam sensörde %0,5 yanlış alarm. Yanlış alarm verilen sensörler çoğunlukla zonu temsil etmeyen
+   (Kc'si düşük) hücrelerde ve bu sanal dünyada dışlanmaları kararı iyileştiriyor.
+3. Kayma testiyle sensörlü ikiz, sensörsüz modele karşı aynı suda stresi yaklaşık yarıya indiriyor. §5'teki
+   "QC yetmez" sonucu yalnız SIMPaCT tipi kurallar için geçerli.
+
+### 8.7 Sınırlılıklar (kural 7)
+
+- **Eşik aynı sanal dünyadan kalibre edildi** (yıllar ayrı, dünya aynı). Sahada eşik, sağlam sensör verisiyle yeniden
+  kalibre edilmeli.
+- **Kayma sezon başında başlıyor ve hızı sabit** (0,001/gün). Geç başlayan ya da daha yavaş kayma daha geç
+  yakalanır. 0,0009 eşiğinin altındaki kayma hızları hiç yakalanamaz.
+- **Kuru yöne kayma denenmedi.**
+- **Açık döngü model hatası:** model, uygulanan doz ve gözlenen havayla sürülüyor. Sahada sayaç ya da yağış ölçümü
+  hatalıysa referans da bozulur ve eşik buna göre gevşetilmeli.
+- **Tahmin modu:** `plan_from_forecast` bugünkü okumada kayma testine yeni nokta eklemiyor. Pencere bir gün eksik
+  kalıyor; geçmiş günlerde test çalışıyor.

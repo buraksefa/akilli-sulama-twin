@@ -380,6 +380,41 @@ class SensorQCParameters:
             description="Doygunluk sonrası referans kontrolü için açık üstü tampon",
         )
     )
+    drift_window_days: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=90,
+            unit="gün",
+            source=(
+                "Varsayım: sensör ile sensörü görmeyen açık döngü modeli arasındaki farkın eğimi bu uzunlukta "
+                "kayan pencerede EKK ile kestirilir. 60 ve 90 gün, Theil-Sen ve ET ortak değişkenli regresyon "
+                "karşılaştırıldı; 90 günlük EKK en iyi ayrımı verdi (docs/model/SENSOR_QC.md §8)"
+            ),
+            status=VerificationStatus.ASSUMPTION,
+            description="Model-sensör tutarlılık (kayma) testi penceresi",
+        )
+    )
+    drift_min_points: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=45,
+            unit="okuma",
+            source="Varsayım: eğim bu kadar geçerli okumadan önce hesaplanmaz",
+            status=VerificationStatus.ASSUMPTION,
+            description="Kayma testi için pencerede gereken en az geçerli okuma",
+        )
+    )
+    drift_slope_max: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=0.0009,
+            unit="m3/m3/gün",
+            source=(
+                "Kalibrasyon: 2020-2021 sanal dünya koşularında sağlam sensörlerin sezon içi en büyük |eğim| "
+                "değerlerinin %99'luk dilimi (0,00090); 2022-2024 bağımsız değerlendirme (docs/model/SENSOR_QC.md §8). "
+                "Sanal dünyaya özgüdür; sahada yeniden kalibre edilmeli"
+            ),
+            status=VerificationStatus.ASSUMPTION,
+            description="Model-sensör farkının izin verilen en büyük mutlak eğimi (iki yönlü)",
+        )
+    )
 
 
 @dataclass

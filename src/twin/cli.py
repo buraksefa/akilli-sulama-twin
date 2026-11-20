@@ -381,6 +381,9 @@ def heterogeneity(
     out_dir: str = typer.Option("outputs/heterogeneity", "--out", help="CSV çıktı dizini"),
     no_faults: bool = typer.Option(False, "--no-faults", help="Sensör arızalarını kapat (yalnız gürültü)"),
     with_qc: bool = typer.Option(False, "--with-qc", help="Sensörlü ikizleri QC'li ve QC'siz koş"),
+    no_drift_test: bool = typer.Option(
+        False, "--no-drift-test", help="QC'de model-sensör tutarlılık (kayma) testini kapat"
+    ),
 ):
     """Zon içi farklılık: güvenlik payı × sensör yerleşimi × zon boyutu (sanal Yıldız dünyası, ERA5 hava)."""
     import time
@@ -402,6 +405,7 @@ def heterogeneity(
             weather,
             seeds=range(seeds),
             qc_options=(False, True) if with_qc else (False,),
+            qc_drift=not no_drift_test,
         )
         df.insert(0, "yil", year)
         df.insert(1, "sensor_arizasi", not no_faults)
@@ -435,10 +439,17 @@ def qc_detection_cmd(
     years: str = typer.Option("2024", "--years", help="Virgülle ayrılmış sezonlar"),
     seeds: int = typer.Option(10, "--seeds", help="Sensör tohum sayısı"),
     out_dir: str = typer.Option("outputs/sensor_qc", "--out", help="CSV çıktı dizini"),
+    no_drift_test: bool = typer.Option(
+        False, "--no-drift-test", help="Model-sensör tutarlılık (kayma) testini kapat"
+    ),
+    drift_slope_max: Optional[float] = typer.Option(
+        None, "--drift-slope-max", help="Kayma eşiğini geçersiz kıl (kalibrasyon için ör. inf)"
+    ),
 ):
     """Çevrimiçi sensör QC'sinin arıza yakalama başarısı ve gecikmesi (sanal Yıldız dünyası, ERA5 hava)."""
     import time
 
+    from twin.config import TwinConfig
     from twin.sim.heterogeneity import qc_detection
     from twin.sim.virtual_world import load_world_spec
 
@@ -448,7 +459,17 @@ def qc_detection_cmd(
     for year in [int(y) for y in years.split(",")]:
         weather = prepare_season_weather(season_year=year, source="era5", park_id="yildiz")
         t0 = time.perf_counter()
-        df = qc_detection(spec, "data/public/parks.geojson", weather, seeds=range(seeds))
+        cfg = TwinConfig()
+        if drift_slope_max is not None:
+            cfg.sensor_qc.drift_slope_max.value = float(drift_slope_max)
+        df = qc_detection(
+            spec,
+            "data/public/parks.geojson",
+            weather,
+            seeds=range(seeds),
+            config=cfg,
+            qc_drift=not no_drift_test,
+        )
         df.insert(0, "yil", year)
         df["kaynak"] = f"synthetic_world+{weather.attrs.get('source')}"
         df.to_csv(out_path / f"detection_{year}.csv", index=False)
