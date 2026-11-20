@@ -1,0 +1,68 @@
+{
+  "name": "Yıldız Korusu - sanal test dünyası (v1)",
+  "park_id": "yildiz",
+  "status": "assumption",
+  "notes": "Sınır gerçek İBB poligonudur (data/public/parks.geojson). İçerideki bitki dağılımı, toprak heterojenliği, sulama zonları ve sensör yerleri RASTGELE ÜRETİLMİŞ SANAL DÜNYA VARSAYIMIDIR; gerçek park envanteri değildir. Çim katsayıları FAO-56 serin iklim çimi; diğer bitki aralıkları literatür değeri değil, test amaçlı varsayımdır. İBB verisi geldikçe bu dosya güncellenecek.",
+  "grid_m": 10,
+  "world_seed": 7,
+  "zone_blocks": [2, 2],
+  "soil": {
+    "theta_fc": {"mean": 0.28, "spread": 0.03, "source": "config varsayılanı ± sanal dünya heterojenliği"},
+    "theta_wp": {"mean": 0.14, "spread": 0.02, "source": "config varsayılanı ± sanal dünya heterojenliği"},
+    "microclimate_et_factor": {"min": 0.85, "max": 1.15, "source": "sanal dünya varsayımı (gölge/rüzgâr farkı)"}
+  },
+  "vegetation": {
+    "turf": {
+      "label": "Çim alanı",
+      "fraction": 0.20,
+      "kc_stage": [0.90, 0.95, 0.95],
+      "kc_source": "FAO-56 Tablo 12, Turf grass - cool season (verified)",
+      "root_depth_m": [0.4, 0.6],
+      "p_depletion": 0.40,
+      "irrigation": "yağmurlama",
+      "efficiency": 0.75,
+      "sensors_per_zone": 2
+    },
+    "tree": {
+      "label": "Ağaçlık (koru)",
+      "fraction": 0.55,
+      "kc_range": [0.5, 0.8],
+      "kc_source": "sanal dünya varsayımı",
+      "root_depth_m": [0.8, 1.2],
+      "p_depletion": 0.50,
+      "irrigation": "damla",
+      "efficiency": 0.90,
+      "sensors_per_zone": 1
+    },
+    "shrub": {
+      "label": "Çalı",
+      "fraction": 0.17,
+      "kc_range": [0.4, 0.6],
+      "kc_source": "sanal dünya varsayımı",
+      "root_depth_m": [0.4, 0.7],
+      "p_depletion": 0.50,
+      "irrigation": "damla",
+      "efficiency": 0.90,
+      "sensors_per_zone": 1
+    },
+    "flower": {
+      "label": "Çiçek tarhı",
+      "fraction": 0.08,
+      "kc_range": [0.8, 1.0],
+      "kc_source": "sanal dünya varsayımı",
+      "root_depth_m": [0.2, 0.3],
+      "p_depletion": 0.40,
+      "irrigation": "yağmurlama",
+      "efficiency": 0.75,
+      "sensors_per_zone": 1
+    }
+  },
+  "sensors": {
+    "noise_std": 0.02,
+    "noise_source": "config obs_error_std (varsayım)",
+    "fault_probabilities": {"drift": 0.15, "freeze": 0.10, "dropout": 0.10},
+    "drift_rate_per_day": 0.001,
+    "freeze_days": 20,
+    "dropout_prob": 0.2
+  }
+}
