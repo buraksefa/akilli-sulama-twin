@@ -149,8 +149,14 @@ def backfill_cmd(
     hours: int = typer.Option(48, "--hours", help="Geriye kaç saat"),
     db: Optional[str] = typer.Option(None, "--db"),
     seed: int = typer.Option(0, "--seed"),
+    before_live: bool = typer.Option(
+        False, "--before-live", help="Depodaki ilk ölçümden önce bitir (canlı veriyle çakışmasın)"
+    ),
 ):
-    """Son N saati aracısız simüle edip depoya yaz (panel demosu; tüm satırlar sim=1)."""
+    """Son N saati aracısız simüle edip depoya yaz (panel demosu; tüm satırlar sim=1).
+
+    Canlı alım servisi çalışırken kullanmayın: önce servisi durdurun, sonra yeniden başlatın (QC durumu depodan kurulur).
+    """
     from twin.config import TwinConfig
     from twin.devices.ingest import Ingestor
     from twin.devices.service import TZ, backfill, load_world, make_simulator
@@ -160,6 +166,11 @@ def backfill_cmd(
     end = datetime.now(TZ).replace(second=0, microsecond=0)
     end -= timedelta(minutes=end.minute % (step // 60 or 1))
     store = TelemetryStore(db)
+    if before_live:
+        first = store.conn.execute("SELECT MIN(ts) FROM readings").fetchone()[0]
+        if first is not None:
+            end = min(end, datetime.fromtimestamp(int(first) - step, TZ))
+            end -= timedelta(minutes=end.minute % (step // 60 or 1), seconds=end.second)
     devices = load_registry()
     n = backfill(
         make_simulator(load_world(), devices, seed=seed),

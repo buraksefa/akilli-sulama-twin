@@ -71,6 +71,16 @@ class Ingestor:
                 q.update(float(r.vwc_mean) if r.n else float("nan"))
                 prev = r.day
             self._last_day[node] = prev
+        # henüz kapanmamış günün okumalarını tampona geri yükle (yeniden başlatmada günlük ortalama eksik kalmasın)
+        rd = self.store.readings()
+        if len(rd):
+            rd = rd.assign(day=rd["ts"].map(_day))
+            for node, g in rd.groupby("node"):
+                last_day = g["day"].max()
+                if self._last_day.get(node) is not None and last_day <= self._last_day[node]:
+                    continue
+                ok = g[(g["day"] == last_day) & (g["live_qc"] == "ok")]
+                self._buf[node] = (last_day, list(ok["soil_vwc"].astype(float)))
 
     def _close_day(self, node: str, day: str, values: list) -> str:
         q = self._qc_for(node)

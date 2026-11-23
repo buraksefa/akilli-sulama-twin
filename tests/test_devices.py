@@ -213,3 +213,13 @@ def test_container_and_deploy_never_ship_iski_or_secrets():
     assert "COPY data/ " not in cf and "data/iski" not in cf.replace("data/iski ve", "")
     for unit in Path("server/podman").glob("*.container"):
         assert "cmd" not in unit.read_text().split("[Container]")[1]
+
+
+def test_restart_restores_open_day_buffer(tmp_path, devices):
+    ing = _ingestor(tmp_path, devices)
+    node = devices[0].node
+    for i in range(3):
+        m = Telemetry(node=node, seq=i + 1, ts=1795400000 + 900 * i, soil_vwc=0.2 + 0.01 * i)
+        ing.handle(f"sulama/{node}/telemetry", m.model_dump_json(by_alias=True).encode())
+    ing2 = Ingestor(ing.store, devices)
+    assert ing2._buf[node][1] == ing._buf[node][1]
