@@ -22,7 +22,10 @@ if [[ "${1:-}" == "--node-user" ]]; then
 fi
 # düz metni konteyner içinde karmaya çevir (parola komut satırına girmez)
 podman run --rm -v "$tmp:/tmp/passwd:Z" docker.io/library/eclipse-mosquitto:2 mosquitto_passwd -U /tmp/passwd
+[[ -f "$CONF/passwd" ]] && podman unshare rm -f "$CONF/passwd"
 install -m 600 "$tmp" "$CONF/passwd" && rm -f "$tmp"
+# rootless Podman: konteynerdeki mosquitto kullanıcısı (uid 1883) okuyabilsin; sudo gerekmez
+podman unshare chown 1883:1883 "$CONF/passwd"
 cat > "$ENVF" <<ENV
 MQTT_SIM_USER=devsim
 MQTT_SIM_PASS=$SIM_PASS

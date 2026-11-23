@@ -146,11 +146,14 @@ Adımlar:
    server/podman/deploy.sh
    ```
 
-**Kurulumda doğrulanacaklar (henüz denenmedi):**
+**Kurulum 2026-11-23'te yapıldı ve doğrulandı:
 
-- Rootless Podman'da Mosquitto, 600 izinli parola dosyasını okuyabiliyor mu?
-- 8501 kapısı rhelsrv'de boş mu?
-- Dört konteyner birlikte RAM'e sığıyor mu?
+- Mosquitto 2.1.4, `devsim` ve `ingest` kullanıcılarını parolayla kabul etti. Parola dosyası, rootless Podman'da
+  konteyner içindeki mosquitto kullanıcısına `podman unshare chown 1883:1883` ile verildi (sudo gerekmedi).
+- Simülatör ilk turda 20 düğümün 20'siyle yayın yaptı (hava: open_meteo). Panel `http://192.168.1.142:8501`
+  adresinden HTTP 200 dönüyor ve Cihazlar sayfası "Canlı" modda.
+- Bellek (podman stats): ui 85 MB, mosquitto 3 MB, ingest 286 MB, devsim 240 MB. Sanal makinede yaklaşık 540 MB boş
+  kaldı. İmaj boyutu 1,11 GB.
 
 ## 6. Sınırlılıklar
 
