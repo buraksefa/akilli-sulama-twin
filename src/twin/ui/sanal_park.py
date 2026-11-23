@@ -33,6 +33,8 @@ from twin.sim.virtual_world import (
     runtime_minutes,
     summarize_run,
 )
+from twin.ui import park3d
+from twin.ui.park3d import park_deck, picked_zone
 
 ROOT = Path(__file__).resolve().parents[3]
 SPEC_PATH = ROOT / "data" / "scenarios" / "yildiz_dunya.json"
@@ -62,6 +64,7 @@ CSS = """
 # toprak nemi durumu: açık/eşik oranına göre dört sınıf (eşikler: 0,5 · güvenlik payı · 1,0)
 STATE_LABELS = ["Nemli", "Uygun", "Sulama gerekli", "Stres (susuz)"]
 STATE_COLORS = ["#2c7fb8", "#8fd19e", "#f2c14e", "#c0392b"]
+STATE_COLORS_3D = [(132, 196, 240), (150, 222, 150), (250, 212, 100), (235, 110, 100)]
 VEG_SHORT = {"turf": "Çim", "tree": "Ağaç", "shrub": "Çalı", "flower": "Çiçek"}
 
 
@@ -217,6 +220,72 @@ def pick_zone(event, key: str, n_zones: int, default: int) -> int:
             st.session_state[key] = int(cd[0] if isinstance(cd, (list, tuple)) else cd)
             break
     return int(st.session_state.get(key, default)) % max(n_zones, 1)
+
+
+def sensor_day_status(run, t: int):
+    """Gün t'de sensör başına (durum, açıklama HTML'i): ok / reject / nodata."""
+    if run is None or run.sensors is None or run.sensors.empty:
+        return None, None
+    sd = run.sensors
+    rows = sd[sd["time"] == run.dates[min(t, len(run.dates) - 1)]]
+    status, html = {}, {}
+    for r in rows.itertuples():
+        reason = getattr(r, "qc_reason", "ok")
+        status[r.sensor_id] = "nodata" if reason == "nodata" else ("ok" if reason == "ok" else "reject")
+        read = "veri yok" if np.isnan(r.theta_read) else f"{r.theta_read:.3f} m³/m³"
+        qc_txt = QC_REASONS.get(reason, reason) if getattr(run, "qc_enabled", False) else "QC kapalı"
+        html[r.sensor_id] = (
+            f"<b>Sensör {r.sensor_id}</b><br>okuma: {read}<br>QC: {qc_txt}"
+            f"<br><span style='opacity:.7'>sanal gerçek: {r.theta_true:.3f} · arıza: "
+            f"{FAULT_TEXT.get(r.fault_type, r.fault_type)} (ikiz bilmez)</span>"
+        )
+    return status, html
+
+
+def zone_map(world, cell_ratio, margin, zone_text, sel, key_zone, key_map, default, run=None, t=None):
+    """3B (pydeck) ya da 2B (plotly) durum haritası; tıklanan zonu oturumda tutar, değişirse yeniden çizer."""
+    if st.session_state.get("view3d", True):
+        cls = state_class(cell_ratio, margin)
+        zone_cls = [
+            int(state_class(np.nanmean(cell_ratio[world.zone_c == zi]), margin))
+            for zi in range(len(world.zones))
+        ]
+        titles = [f"{zone_name(z)} · {STATE_LABELS[zone_cls[zi]]}" for zi, z in enumerate(world.zones)]
+        status, html = sensor_day_status(run, t if t is not None else 0)
+        ev = st.pydeck_chart(
+            park_deck(
+                world, zone_text, titles, cell_class=cls, selected=sel, sensor_status=status, sensor_html=html
+            ),
+            height=600,
+            on_select="rerun",
+            selection_mode="single-object",
+            key=key_map + "_3d",
+        )
+        z = picked_zone(ev)
+        if z is not None and z != sel:
+            st.session_state[key_zone] = z
+            st.rerun()
+        legend = " ".join(
+            f"<span class='tag'><span style='color:rgb{STATE_COLORS_3D[i]}'>■</span> {lab}</span>"
+            for i, lab in enumerate(STATE_LABELS)
+        )
+        st.markdown(
+            legend
+            + "<span class='tag'>🌳 ağaçlık</span><span class='tag'><span style='color:#2ea043'>▮</span> "
+            "sensör: geçti</span><span class='tag'><span style='color:#cf222e'>▮</span> QC reddetti</span>"
+            "<span class='tag'>sürükle: kaydır · sağ tık / Ctrl+sürükle: döndür</span>",
+            unsafe_allow_html=True,
+        )
+        return
+    ev = st.plotly_chart(
+        state_map(world, cell_ratio, margin, zone_text, selected=sel),
+        width="stretch",
+        on_select="rerun",
+        selection_mode="points",
+        key=key_map,
+    )
+    if pick_zone(ev, key_zone, len(world.zones), default) != sel:
+        st.rerun()
 
 
 def zone_card(world, zi: int, run, weather, t_now: int, dr_hat_now: float, margin: float, plan=None):
@@ -565,18 +634,20 @@ def render_forecast(world, shown: str, margin: float, sensor_seed: int, world_se
     sel = int(st.session_state.get(key, default)) % len(world.zones)
     c_map, c_card = st.columns([3, 2], gap="medium")
     with c_map:
-        ev = st.plotly_chart(
-            state_map(world, ratio[world.zone_c], margin, zone_text, selected=sel),
-            width="stretch",
-            on_select="rerun",
-            selection_mode="points",
-            key="map_fc",
-        )
-        new = pick_zone(ev, key, len(world.zones), default)
-        if new != sel:
-            st.rerun()
-    with c_card:
         run_p = past_runs[shown]
+        zone_map(
+            world,
+            ratio[world.zone_c],
+            margin,
+            zone_text,
+            sel,
+            key,
+            "map_fc",
+            default,
+            run=run_p,
+            t=len(run_p.dates) - 1,
+        )
+    with c_card:
         t_now = len(run_p.dates)
         zone_card(
             world,
@@ -688,6 +759,12 @@ with st.sidebar:
         help="Açıkken ikiz her okumayı kullanmadan önce denetler: fiziksel aralık, 3 günden uzun kesinti, eksik oranı, "
         "donmuş değer (SIMPaCT) ve tarla kapasitesi üstü okuma. Reddedilen okuma kullanılmaz; zonda geçerli sensör "
         "kalmazsa ikiz su dengesi modeliyle devam eder.",
+    )
+    st.toggle(
+        "3B park görünümü",
+        value=True,
+        key="view3d",
+        help="Açık: eğik bakışlı 3B park (sürükle, döndür, yakınlaştır). Kapalı: düz 2B ızgara haritası.",
     )
     with st.expander("Rastgelelik"):
         world_seed = int(st.number_input("Sanal park tohumu (bitki/toprak dağılımı)", 0, 9999, 7))
@@ -833,7 +910,30 @@ fig.update_layout(
 fig.update_xaxes(visible=False)
 fig.update_yaxes(visible=False, scaleanchor="x", constrain="domain")
 c_map, c_info = st.columns([3, 1])
-c_map.plotly_chart(fig, width="stretch")
+if st.session_state.get("view3d", True):
+    by = "veg" if map_mode == "Bitki türleri" else "system"
+    ov_html = [
+        f"<b>{zone_name(z)}</b> · {z.label}<br>{z.irrigation}, {z.application_rate_mm_h:g} mm/saat"
+        f"<br>{z.area_m2 / 10000:.2f} ha · Kc (yaz) {z.kc_nominal[1]:.2f} · kök ≈ {z.zr_nominal:.2f} m"
+        for z in world.zones
+    ]
+    ov_title = [f"{zone_name(z)}" for z in world.zones]
+    with c_map:
+        st.pydeck_chart(park_deck(world, ov_html, ov_title, color_by=by), height=560, key="overview_3d")
+        if by == "veg":
+            chips = "".join(
+                f"<span class='tag'><span style='color:rgb{park3d.VEG_RGB[k]}'>■</span> {spec_veg[k]['label']} · "
+                f"{counts[k] * world.cell_area_m2 / 10000:.1f} ha</span>"
+                for k in VEG_KEYS
+            )
+        else:
+            chips = "".join(
+                f"<span class='tag'><span style='color:rgb{rgb}'>■</span> {sysname}</span>"
+                for sysname, rgb in park3d.SYSTEM_RGB.items()
+            )
+        st.markdown(chips + "<span class='tag'>▮ sensör direği</span>", unsafe_allow_html=True)
+else:
+    c_map.plotly_chart(fig, width="stretch")
 with c_info:
     st.metric("Park alanı (ızgara)", f"{len(world.veg_c) * world.cell_area_m2 / 10000:.1f} ha")
     st.metric("Sulama zonu", f"{len(world.zones)}")
@@ -880,15 +980,7 @@ default = int(np.argmax(stressed_zone))
 sel = int(st.session_state.get(key, default)) % len(world.zones)
 c_map, c_card = st.columns([3, 2], gap="medium")
 with c_map:
-    ev = st.plotly_chart(
-        state_map(world, cell_ratio, margin, zone_text, selected=sel),
-        width="stretch",
-        on_select="rerun",
-        selection_mode="points",
-        key="map_past",
-    )
-    if pick_zone(ev, key, len(world.zones), default) != sel:
-        st.rerun()
+    zone_map(world, cell_ratio, margin, zone_text, sel, key, "map_past", default, run=run, t=day)
 with c_card:
     zone_card(world, sel, run, weather, day, float(run.dr_hat[day, sel]), margin)
 m1, m2, m3, m4 = st.columns(4)

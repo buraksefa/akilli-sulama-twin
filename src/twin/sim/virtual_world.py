@@ -95,6 +95,13 @@ class World:
     sensors: List[WorldSensor]
     cell_area_m2: float
     boundary_xy: List[np.ndarray] = field(default_factory=list)
+    origin_lonlat: tuple = (0.0, 0.0)  # yerel düzlemin (x=0, y=0) noktası [boylam, enlem]
+
+    def to_lonlat(self, x, y):
+        """Yerel düzlem [m] → (boylam, enlem); build_world'deki eşdikdörtgen izdüşümün tersi."""
+        lon0, lat0 = self.origin_lonlat
+        kx = M_PER_DEG_LON_EQUATOR * np.cos(np.radians(lat0))
+        return lon0 + np.asarray(x) / kx, lat0 + np.asarray(y) / M_PER_DEG_LAT
 
     @property
     def taw_c(self) -> np.ndarray:
@@ -284,6 +291,7 @@ def build_world(spec: dict, geojson_path: str | Path) -> World:
         sensors=sensors,
         cell_area_m2=g * g,
         boundary_xy=rings,
+        origin_lonlat=(lon0, lat0),
     )
 
 
