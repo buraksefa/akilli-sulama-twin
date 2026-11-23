@@ -37,3 +37,7 @@ CLAUDE.md.bak
 
 # Open-Meteo önceki-koşu tahmin arşivi (isabet ölçümü yeniden üretilebilsin; küçük dosya)
 !data/external/open_meteo_previous_runs_*.csv
+
+# Cihaz telemetri deposu (yerel/sunucu; depoya girmez). Kayıt (registry.json) girer.
+data/devices/*.sqlite*
+data/devices/weather_cache.pkl

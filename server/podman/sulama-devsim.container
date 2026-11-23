@@ -1,0 +1,21 @@
+# Sanal sensör düğümleri: 15 dakikada bir sulama/<node>/telemetry yayınlar (cmd yok). Kimlik: MQTT_SIM_*.
+# Gerçek düğüm geldikçe registry.json'da source=real yapılır; tamamen gerçek olunca bu servis kapatılır.
+[Unit]
+Description=Sulama sanal sensor dugumleri
+Requires=sulama-mosquitto.service
+After=sulama-mosquitto.service sulama-ingest.service
+
+[Container]
+Image=localhost/sulama-twin:latest
+ContainerName=sulama-devsim
+Network=sulama.network
+EnvironmentFile=%h/.config/sulama/devices.env
+Volume=sulama-telemetry:/var/lib/twin
+Exec=twin devices simulate --host sulama-mosquitto
+
+[Service]
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=default.target

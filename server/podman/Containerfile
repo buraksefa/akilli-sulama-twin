@@ -1,0 +1,26 @@
+# Sulama ikizi cihaz platformu imajı: simülatör (devsim), alım (ingest) ve panel (ui) aynı imajı kullanır.
+# Derleme bağlamı depo köküdür; .containerignore İSKİ verisini, sırları ve yerel depoları dışarıda tutar.
+#   podman build -f server/podman/Containerfile -t localhost/sulama-twin:latest .
+FROM docker.io/library/python:3.11-slim
+
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    TWIN_DEVICE_DB=/var/lib/twin/telemetry.sqlite \
+    TWIN_WEATHER_CACHE=/var/lib/twin/weather_cache.pkl
+
+COPY pyproject.toml requirements.txt README.md ./
+COPY src/ ./src/
+RUN pip install . "streamlit>=1.40" "plotly>=5.18" "paho-mqtt>=2.0"
+
+# Yalnız gereken halka açık / sanal veriler (data/iski ve data/raw kopyalanmaz)
+COPY data/scenarios/ ./data/scenarios/
+COPY data/public/ ./data/public/
+COPY data/devices/registry.json ./data/devices/registry.json
+COPY data/processed/ ./data/processed/
+
+RUN useradd -u 10001 -m twin && mkdir -p /var/lib/twin && chown twin /var/lib/twin
+USER twin
+VOLUME /var/lib/twin
+EXPOSE 8501
+CMD ["twin", "devices", "--help"]

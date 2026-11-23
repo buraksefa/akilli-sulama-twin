@@ -1,0 +1,18 @@
+# MQTT aracısı. Parola dosyası ve ACL: ~/sulama-twin/server/mosquitto/config (passwd'yi setup-secrets.sh üretir).
+[Unit]
+Description=Sulama MQTT aracisi (Mosquitto)
+
+[Container]
+Image=docker.io/library/eclipse-mosquitto:2
+ContainerName=sulama-mosquitto
+Network=sulama.network
+PublishPort=1883:1883
+Volume=%h/sulama-twin/server/mosquitto/config:/mosquitto/config:ro,Z
+Volume=sulama-mosquitto-data:/mosquitto/data
+AutoUpdate=registry
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

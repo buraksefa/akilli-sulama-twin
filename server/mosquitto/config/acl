@@ -14,3 +14,13 @@ topic read sulama/+/status
 user operator
 topic read sulama/#
 topic write sulama/+/cmd
+
+# Sanal sensör düğümleri (twin devices simulate): yalnız ölçüm ve durum yayınlar; cmd yok
+user devsim
+topic write sulama/+/telemetry
+topic write sulama/+/status
+
+# Telemetri alımı (twin devices ingest): yalnız okur
+user ingest
+topic read sulama/+/telemetry
+topic read sulama/+/status

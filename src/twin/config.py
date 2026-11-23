@@ -559,6 +559,123 @@ class ERA5Parameters:
 
 
 @dataclass
+class DeviceParameters:
+    """Sensör düğümü platformu: raporlama, ham okuma kalibrasyonu ve uyarı eşikleri (sanal ve gerçek düğüm)."""
+
+    report_interval_s: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=900,
+            unit="s",
+            source="Varsayım: düğüm 15 dakikada bir okur ve yayınlar (firmware ölçüm aralığıyla uyumlu tutulmalı)",
+            status=VerificationStatus.ASSUMPTION,
+            description="Telemetri aralığı",
+        )
+    )
+    soil_raw_dry: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=1000,
+            unit="ADC",
+            source="firmware/sulama_node/config.example.h SOIL_RAW_DRY (kuru hava referansı; kalibrasyon yapılmadı)",
+            status=VerificationStatus.ASSUMPTION,
+            description="Kapasitif sensör ham değeri: kuru",
+        )
+    )
+    soil_raw_wet: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=400,
+            unit="ADC",
+            source="firmware/sulama_node/config.example.h SOIL_RAW_WET (su referansı; kalibrasyon yapılmadı)",
+            status=VerificationStatus.ASSUMPTION,
+            description="Kapasitif sensör ham değeri: su",
+        )
+    )
+    vwc_full_scale: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=0.40,
+            unit="m3/m3",
+            source="firmware rawToVWC(): CALIB_SLOPE yoksa (kuru - ham)/(kuru - ıslak) · 0,40",
+            status=VerificationStatus.ASSUMPTION,
+            description="Ham okumanın doğrusal VWC karşılığında ıslak uç",
+        )
+    )
+    offline_after_intervals: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=3,
+            unit="aralık",
+            source="Varsayım: art arda 3 rapor gelmezse düğüm çevrimdışı sayılır",
+            status=VerificationStatus.ASSUMPTION,
+            description="Çevrimdışı uyarısı eşiği",
+        )
+    )
+    battery_low_v: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=3.4,
+            unit="V",
+            source="Varsayım: tek hücre Li-ion için düşük pil uyarısı (üretici eğrisiyle doğrulanmalı)",
+            status=VerificationStatus.ASSUMPTION,
+            description="Düşük pil uyarısı",
+        )
+    )
+    rssi_weak_dbm: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=-85,
+            unit="dBm",
+            source="Varsayım: Wi-Fi için zayıf sinyal eşiği",
+            status=VerificationStatus.ASSUMPTION,
+            description="Zayıf sinyal uyarısı",
+        )
+    )
+    sim_battery_drain_v_per_day: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=0.004,
+            unit="V/gün",
+            source="Sanal düğüm varsayımı (pil boşalması; gerçek düğümde ölçülecek)",
+            status=VerificationStatus.ASSUMPTION,
+            description="Simülatör: günlük pil gerilimi düşüşü",
+        )
+    )
+    sim_short_noise_vwc: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=0.003,
+            unit="m3/m3",
+            source=(
+                "Sanal düğüm varsayımı: 15 dakikalık okumalar arası kısa dönem gürültü. Günlük hata (gürültü, kayma, "
+                "donma, veri kaybı) sanal dünyadaki sensör modelinden günde bir kez çekilir"
+            ),
+            status=VerificationStatus.ASSUMPTION,
+            description="Simülatör: gün içi okuma gürültüsü",
+        )
+    )
+    alert_hysteresis_db: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=3,
+            unit="dB",
+            source="Varsayım: zayıf sinyal uyarısı eşik + 3 dB'ye dönünce kapanır (uyarı çırpınmasını önler)",
+            status=VerificationStatus.ASSUMPTION,
+            description="Sinyal uyarısı kapanma payı",
+        )
+    )
+    alert_hysteresis_v: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=0.05,
+            unit="V",
+            source="Varsayım: düşük pil uyarısı eşik + 0,05 V'a dönünce kapanır",
+            status=VerificationStatus.ASSUMPTION,
+            description="Pil uyarısı kapanma payı",
+        )
+    )
+    sim_irrigation_hour: ParameterItem = field(
+        default_factory=lambda: ParameterItem(
+            value=5,
+            unit="saat",
+            source="Sanal park varsayımı: ikizin önerdiği sulama sabah 05:00'te sanal sisteme uygulanır",
+            status=VerificationStatus.ASSUMPTION,
+            description="Simülatör: sulama saati",
+        )
+    )
+
+
+@dataclass
 class TwinConfig:
     """Tüm dijital ikiz yapılandırma kümesi."""
 
@@ -567,6 +684,7 @@ class TwinConfig:
     irrigation: IrrigationSystemParameters = field(default_factory=IrrigationSystemParameters)
     assimilation: AssimilationParameters = field(default_factory=AssimilationParameters)
     sensor_qc: SensorQCParameters = field(default_factory=SensorQCParameters)
+    devices: DeviceParameters = field(default_factory=DeviceParameters)
     era5: ERA5Parameters = field(default_factory=ERA5Parameters)
     irrigated_fraction: ParameterItem = field(
         default_factory=lambda: ParameterItem(
@@ -599,6 +717,7 @@ class TwinConfig:
                 else getattr(self.irrigation, k)
                 for k in self.irrigation.__dataclass_fields__
             },
+            "devices": {k: getattr(self.devices, k).to_dict() for k in self.devices.__dataclass_fields__},
             "sensor_qc": {
                 k: getattr(self.sensor_qc, k).to_dict() for k in self.sensor_qc.__dataclass_fields__
             },

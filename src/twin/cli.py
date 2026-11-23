@@ -42,6 +42,10 @@ app = typer.Typer(help="Galatasaray Üniversitesi Kent Parkları Sulama Dijital 
 era5_app = typer.Typer(help="ERA5-Land reanaliz verisi indirme ve işleme komutları")
 app.add_typer(era5_app, name="era5")
 
+from twin.devices.cli import app as devices_app  # noqa: E402
+
+app.add_typer(devices_app, name="devices")
+
 
 def _parse_int_range(range_str: str) -> List[int]:
     """'2015-2025' veya '4-10' veya '2024' veya '4,5,6' biçimindeki aralıkları listeye çevirir."""

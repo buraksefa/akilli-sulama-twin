@@ -1,0 +1,20 @@
+# Konteyner imajına asla girmeyecekler (CLAUDE.md §2.1–2.2). Docker için .dockerignore aynı içeriktedir.
+data/iski
+data/iski/**
+**/*iski*
+data/raw
+.env
+**/.env
+server/.env
+server/mosquitto/config/passwd
+firmware/sulama_node/config.h
+**/*.sqlite*
+data/devices/weather_cache.pkl
+.venv
+.git
+outputs
+notebooks
+CLAUDE.md.bak
+**/__pycache__
+.pytest_cache
+.ruff_cache

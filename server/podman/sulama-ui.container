@@ -1,0 +1,17 @@
+# Panel (Streamlit): sanal park + Cihazlar sayfası, LAN'da :8501. Depoyu yalnız okur.
+[Unit]
+Description=Sulama ikizi paneli
+
+[Container]
+Image=localhost/sulama-twin:latest
+ContainerName=sulama-ui
+Network=sulama.network
+PublishPort=8501:8501
+Volume=sulama-telemetry:/var/lib/twin
+Exec=streamlit run src/twin/ui/sanal_park.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true --browser.gatherUsageStats=false
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

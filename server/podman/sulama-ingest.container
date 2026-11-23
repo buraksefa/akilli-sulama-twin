@@ -1,0 +1,20 @@
+# Telemetri alımı: sulama/+/telemetry ve /status → SQLite (QC + uyarılar). Kimlik: devices.env (MQTT_INGEST_*).
+[Unit]
+Description=Sulama telemetri alimi
+Requires=sulama-mosquitto.service
+After=sulama-mosquitto.service
+
+[Container]
+Image=localhost/sulama-twin:latest
+ContainerName=sulama-ingest
+Network=sulama.network
+EnvironmentFile=%h/.config/sulama/devices.env
+Volume=sulama-telemetry:/var/lib/twin
+Exec=twin devices ingest --host sulama-mosquitto
+
+[Service]
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
