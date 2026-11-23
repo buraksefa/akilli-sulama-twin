@@ -7,6 +7,7 @@ Veri kaynağı:
 Gerçek ve sanal düğüm aynı sözleşmeyi kullanır; her satırda `sim` bayrağı vardır. Bu sayfa hiçbir komut göndermez.
 """
 
+import json
 import sys
 import tempfile
 import time
@@ -126,6 +127,109 @@ def node_state(last_received, status, now):
     if age > 1.5 * CFG.report_interval_s.value:
         return "late"
     return "online"
+
+
+SPEC = json.loads((ROOT / "data/scenarios/yildiz_dunya.json").read_text(encoding="utf-8"))
+THETA_FC = float(SPEC["soil"]["theta_fc"]["mean"])
+THETA_WP = float(SPEC["soil"]["theta_wp"]["mean"])
+TARGET_MARGIN = 0.9  # ikizin varsayılan güvenlik payı (simülatörle aynı)
+MOIST_STATES = [
+    ("🔵", "Islak (tarla kapasitesi üstü)"),
+    ("🟢", "Uygun"),
+    ("🟡", "Sulama gerekli"),
+    ("🔴", "Stres"),
+]
+
+
+def moisture_targets(veg: str) -> dict:
+    """Bitki türü için nominal nem eşikleri [m³/m³] (FAO-56: RAW = p · TAW; θ cinsinden kök derinliğinden bağımsız)."""
+    p = float(SPEC["vegetation"][veg]["p_depletion"])
+    span = THETA_FC - THETA_WP
+    return {
+        "fc": THETA_FC,
+        "irr": THETA_FC - TARGET_MARGIN * p * span,
+        "stress": THETA_FC - p * span,
+        "wp": THETA_WP,
+        "p": p,
+    }
+
+
+def moisture_state(theta: float, t: dict) -> int:
+    if theta > t["fc"] + 0.02:
+        return 0
+    if theta >= t["irr"]:
+        return 1
+    if theta >= t["stress"]:
+        return 2
+    return 3
+
+
+def plant_moisture_section(latest: pd.DataFrame, qc_last: dict):
+    st.subheader("Bitki türüne göre toprak nemi: olması gereken ve şu anki")
+    st.caption(
+        f"Hedef değerler ikizin bildiği nominal toprakla hesaplanır: tarla kapasitesi θFC {THETA_FC:.2f}, solma noktası "
+        f"θWP {THETA_WP:.2f} m³/m³ (sanal dünya varsayımı). Stres eşiği = θFC − p·(θFC − θWP) (FAO-56, p bitkiye göre); "
+        f"sulama eşiği, ikizin güvenlik payı {TARGET_MARGIN:.1f} ile stres eşiğinin biraz üstündedir. Sensör değeri son "
+        "okumadır; arızalı sensör yanlış gösterebilir (QC sütununa bakın)."
+    )
+    rows = []
+    for d in devices:
+        t = moisture_targets(d.vegetation)
+        r = latest.loc[d.node] if d.node in latest.index else None
+        theta = None if r is None or pd.isna(r["soil_vwc"]) else float(r["soil_vwc"])
+        k = None if theta is None else moisture_state(theta, t)
+        rows.append(
+            {
+                "bitki": SPEC["vegetation"][d.vegetation]["label"],
+                "düğüm": d.node,
+                "zon": d.zone,
+                "sensördeki nem": theta,
+                "olması gereken aralık": f"{t['irr']:.3f} – {t['fc']:.3f}",
+                "sulama eşiği": round(t["irr"], 3),
+                "stres eşiği": round(t["stress"], 3),
+                "kullanılabilir su": None
+                if theta is None
+                else float(np.clip((theta - THETA_WP) / (THETA_FC - THETA_WP), 0, 1.2)),
+                "durum": "veri yok" if k is None else f"{MOIST_STATES[k][0]} {MOIST_STATES[k][1]}",
+                "günlük QC": QC_REASONS.get(qc_last.get(d.node, ""), "—"),
+                "_veg": d.vegetation,
+                "_k": k,
+            }
+        )
+    df = pd.DataFrame(rows)
+
+    summ = []
+    for veg, g in df.groupby("_veg", sort=False):
+        t = moisture_targets(veg)
+        vals = g["sensördeki nem"].dropna()
+        summ.append(
+            {
+                "bitki türü": SPEC["vegetation"][veg]["label"],
+                "p (FAO-56)": t["p"],
+                "olması gereken (sulama eşiği – tarla kap.)": f"{t['irr']:.3f} – {t['fc']:.3f}",
+                "stres eşiği": round(t["stress"], 3),
+                "sensör ortalaması (şimdi)": None if vals.empty else round(float(vals.mean()), 3),
+                "en düşük sensör": None if vals.empty else round(float(vals.min()), 3),
+                "sensör": len(g),
+                "sulama gereken": int(g["_k"].isin([2, 3]).sum()),
+            }
+        )
+    st.dataframe(pd.DataFrame(summ), hide_index=True, width="stretch")
+    st.dataframe(
+        df.drop(columns=["_veg", "_k"]).sort_values(["bitki", "düğüm"]),
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "sensördeki nem": st.column_config.NumberColumn(format="%.3f", help="Son okuma [m³/m³]"),
+            "kullanılabilir su": st.column_config.ProgressColumn(
+                "kullanılabilir su",
+                min_value=0.0,
+                max_value=1.0,
+                format="percent",
+                help="(θ − θWP) / (θFC − θWP); %100 tarla kapasitesi",
+            ),
+        },
+    )
 
 
 @st.fragment(run_every="60s" if live else None)
@@ -351,6 +455,7 @@ def dashboard():
             st.dataframe(c[["opened", "closed", "node", "kind", "message"]], hide_index=True, width="stretch")
         else:
             st.write("Yok.")
+    plant_moisture_section(latest, qc_last)
     store.close()
 
 
